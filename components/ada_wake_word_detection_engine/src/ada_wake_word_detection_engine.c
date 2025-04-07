@@ -62,11 +62,7 @@ static void process_recording(void)
     clear_led_strip();
 
     ada_i2s_start_file_playback("/audio/lounge_act.pcm");
-    ada_led_strip_start_color_breathing_with_duration(0, 0, 255, 125, 38000, 38);
-    vTaskDelay(pdMS_TO_TICKS(38000));
-
-    ada_led_strip_stop_effect();
-    clear_led_strip();
+    ada_led_strip_start_color_breathing_with_duration(0, 0, 255, 125, 38000, 19);
 
     // Reset recording buffer and length
     memset(recording_buffer, 0, max_recording_length);
@@ -111,8 +107,18 @@ void record_audio_task(void *arg)
 {
     ESP_LOGI(TAG, "-----------RECORDING USER SPEECH-----------\n");
 
+    // clear leds
+    ada_led_strip_stop_effect();
+    clear_led_strip();
+
     ada_led_strip_start_sequential_fade_in_with_duration(0, 0, 0, 100, 500, false);
+
+    // clear speaker
+    ada_i2s_stop_playback();
+
     ada_i2s_start_file_playback("/audio/custom_listening_start.pcm");
+
+    // wait for the animation and playback
     vTaskDelay(pdMS_TO_TICKS(500));
 
     ada_led_strip_start_sequential_fade_out_with_duration(CONFIG_ADA_LED_STRIP_MAX_LEDS - 1, 0, 0, 100, MAX_RECORDING_DURATION_MS, true);
