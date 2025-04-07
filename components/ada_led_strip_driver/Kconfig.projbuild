@@ -1,0 +1,33 @@
+menu "Ada LED Strip"
+
+    choice ADA_LED_STRIP_BACKEND
+        prompt "LED strip backend peripheral"
+        default ADA_LED_STRIP_BACKEND_RMT if SOC_RMT_SUPPORTED
+        default ADA_LED_STRIP_BACKEND_SPI
+        help
+            Select the backend peripheral to drive the LED strip.
+
+        config ADA_LED_STRIP_BACKEND_RMT
+            depends on SOC_RMT_SUPPORTED
+            bool "RMT"
+        config ADA_LED_STRIP_BACKEND_SPI
+            bool "SPI"
+    endchoice
+
+    config ADA_LED_STRIP_GPIO
+        int "GPIO number"
+        range 0 46
+        default 5
+        help
+            GPIO number (IOxx) the LED strip is connected to.
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used.
+
+    config ADA_LED_STRIP_MAX_LEDS
+        int "Maximum number of LEDs"
+        default 14
+        help
+            Maximum number of LEDs in the strip.
+            This is used to allocate memory for the LED strip driver.
+            The actual number of LEDs in the strip may be less than this value.
+
+    endmenu

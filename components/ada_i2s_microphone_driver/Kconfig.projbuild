@@ -1,0 +1,27 @@
+menu "Ada I2S Microphone Driver"
+
+    config ADA_I2S_MICROPHONE_LRCK_GPIO
+        int "LRCK GPIO number"
+        range 0 46
+        default 11
+        help
+            GPIO number (IOxx) the LRCK microphone pin is connected to.
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used.
+
+    config ADA_I2S_MICROPHONE_SCLK_GPIO
+        int "SCLK GPIO number"
+        range 0 46
+        default 8
+        help
+            GPIO number (IOxx) the SCLK microphone pin is connected to.
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used.
+
+    config ADA_I2S_MICROPHONE_SDIN_GPIO
+        int "SDIN GPIO number"
+        range 0 46
+        default 18
+        help
+            GPIO number (IOxx) the DOUT microphone pin is connected to.
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used.
+
+endmenu

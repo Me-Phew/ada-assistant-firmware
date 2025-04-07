@@ -1,0 +1,55 @@
+menu "Ada I2S Speaker Driver"
+
+    config ADA_I2S_SPEAKER_LRCK_GPIO
+        int "LRCK GPIO number"
+        range 0 46
+        default 3
+        help
+            GPIO number (IOxx) the LRCK microphone pin is connected to.
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used.
+
+    config ADA_I2S_SPEAKER_BCLK_GPIO
+        int "BCLK GPIO number"
+        range 0 46
+        default 1
+        help
+            GPIO number (IOxx) the BLCK microphone pin is connected to.
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used.
+
+    config ADA_I2S_SPEAKER_SDOUT_GPIO
+        int "SDOUT GPIO number"
+        range 0 46
+        default 2
+        help
+            GPIO number (IOxx) the DIN microphone pin is connected to.
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used.
+
+    choice ADA_I2S_SPEAKER_ENABLE_POTENTIOMETER_VOLUME_CONTROL
+        prompt "Enable potentiometer volume control"
+        default ADA_I2S_SPEAKER_ENABLE_POTENTIOMETER_VOLUME_CONTROL_NO
+        help
+            Enable potentiometer volume control.
+
+        config ADA_I2S_SPEAKER_ENABLE_POTENTIOMETER_VOLUME_CONTROL_NO
+            bool "No"
+            help 
+                No potentiometer volume control.
+                The volume is controlled by the software.
+
+        config ADA_I2S_SPEAKER_ENABLE_POTENTIOMETER_VOLUME_CONTROL_YES
+            bool "Yes"
+            help 
+                Yes, potentiometer volume control.
+                The volume is controlled by the potentiometer.
+    endchoice
+
+    config ADA_I2S_SPEAKER_POTENTIOMETER_GPIO
+        int "Potentiometer GPIO number"
+        range 0 46
+        default 10
+        depends on ADA_I2S_SPEAKER_ENABLE_POTENTIOMETER_VOLUME_CONTROL_YES
+        help
+            GPIO number (IOxx) the potentiometer pin is connected to.
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used.
+
+endmenu
