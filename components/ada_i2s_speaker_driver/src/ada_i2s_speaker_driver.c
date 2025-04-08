@@ -9,6 +9,12 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 
+#ifdef CONFIG_ADA_I2S_SPEAKER_ENABLE_POTENTIOMETER_VOLUME_CONTROL_YES
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
+#endif
+
 #include "ada_i2s_speaker_driver.h"
 #include "ada_i2s_speaker_driver_pinout.h"
 
@@ -33,6 +39,173 @@ static bool g_i2s_speaker_initialized = false;
 
 static i2s_chan_handle_t tx_handle = NULL; // I2S rx channel handler
 
+#ifdef CONFIG_ADA_I2S_SPEAKER_ENABLE_POTENTIOMETER_VOLUME_CONTROL_YES
+
+static adc_oneshot_unit_handle_t adc_handle;
+static adc_cali_handle_t adc_cali_handle = NULL;
+static bool cali_enable = false;
+
+// Default configuration
+#define VOLUME_MIN 0
+#define VOLUME_MAX 100
+#define SAMPLES 10 // For averaging multiple readings
+
+// Function to map GPIO pin to ADC channel for ESP32-S3
+static int gpio_to_adc_channel(int gpio_num)
+{
+    // ESP32-S3 specific mapping
+    switch (gpio_num)
+    {
+    case 1:
+        return 0; // ADC1_CHANNEL_0
+    case 2:
+        return 1; // ADC1_CHANNEL_1
+    case 3:
+        return 2; // ADC1_CHANNEL_2
+    case 4:
+        return 3; // ADC1_CHANNEL_3
+    case 5:
+        return 4; // ADC1_CHANNEL_4
+    case 6:
+        return 5; // ADC1_CHANNEL_5
+    case 7:
+        return 6; // ADC1_CHANNEL_6
+    case 8:
+        return 7; // ADC1_CHANNEL_7
+    case 9:
+        return 8; // ADC1_CHANNEL_8
+    case 10:
+        return 9; // ADC1_CHANNEL_9
+    default:
+        return 9; // Default to GPIO10/ADC1_CH9
+    }
+}
+
+/**
+ * @brief Initialize the ADC for potentiometer reading (ESP-IDF 5.0+ compatible)
+ */
+esp_err_t speaker_potentiometer_init(void)
+{
+    // ADC initialization configuration
+    adc_oneshot_unit_init_cfg_t init_config = {
+        .unit_id = ADC_UNIT_1,
+    };
+
+    // Initialize ADC
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &adc_handle));
+
+    // Get the ADC channel from the configured GPIO pin
+    int adc_channel = gpio_to_adc_channel(CONFIG_ADA_I2S_SPEAKER_POTENTIOMETER_GPIO);
+
+    // ADC configuration
+    adc_oneshot_chan_cfg_t config = {
+        .bitwidth = ADC_BITWIDTH_12,
+        .atten = ADC_ATTEN_DB_12,
+    };
+
+    // Configure the ADC channel
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, adc_channel, &config));
+
+    // ADC calibration configuration
+    adc_cali_handle_t cali_handle = NULL;
+
+#ifdef ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
+    // ESP32, ESP32S2, ESP32S3 support curve fitting scheme
+    adc_cali_curve_fitting_config_t cali_config = {
+        .unit_id = ADC_UNIT_1,
+        .atten = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_12,
+    };
+    ESP_ERROR_CHECK(adc_cali_create_scheme_curve_fitting(&cali_config, &cali_handle));
+    cali_enable = true;
+    adc_cali_handle = cali_handle;
+#elif ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+    // ESP32C3, ESP32H2, ESP32C2 support line fitting scheme
+    adc_cali_line_fitting_config_t cali_config = {
+        .unit_id = ADC_UNIT_1,
+        .atten = ADC_ATTEN_DB_11,
+        .bitwidth = ADC_BITWIDTH_12,
+    };
+    ESP_ERROR_CHECK(adc_cali_create_scheme_line_fitting(&cali_config, &cali_handle));
+    cali_enable = true;
+    adc_cali_handle = cali_handle;
+#else
+    ESP_LOGW(TAG, "No calibration scheme supported, raw ADC results will be used");
+#endif
+
+    ESP_LOGI(TAG, "Potentiometer ADC initialized on GPIO pin %d", CONFIG_ADA_I2S_SPEAKER_POTENTIOMETER_GPIO);
+
+    return ESP_OK;
+}
+
+/**
+ * @brief Read volume level from potentiometer (ESP-IDF 5.0+ compatible)
+ *
+ * @return uint8_t Volume level from VOLUME_MIN to VOLUME_MAX
+ */
+uint8_t speaker_potentiometer_volume_read(void)
+{
+    // Get the ADC channel from the configured GPIO pin
+    int adc_channel = gpio_to_adc_channel(CONFIG_ADA_I2S_SPEAKER_POTENTIOMETER_GPIO);
+
+    int adc_reading = 0;
+
+    // Take multiple samples and average them
+    for (int i = 0; i < SAMPLES; i++)
+    {
+        int raw;
+        ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, adc_channel, &raw));
+        adc_reading += raw;
+    }
+    adc_reading /= SAMPLES;
+
+    int voltage = 0;
+
+    // Convert ADC reading to voltage in mV if calibration is enabled
+    if (cali_enable)
+    {
+        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc_cali_handle, adc_reading, &voltage));
+    }
+    else
+    {
+        // Approximate conversion if no calibration
+        voltage = adc_reading * 3300 / 4095; // For 12-bit ADC
+    }
+
+    // Convert voltage to volume level (0-100)
+    uint8_t volume = (uint8_t)((voltage * (VOLUME_MAX - VOLUME_MIN)) / 3300);
+
+    // Ensure volume is within range
+    if (volume > VOLUME_MAX)
+    {
+        volume = VOLUME_MAX;
+    }
+
+    ESP_LOGD(TAG, "ADC Reading: %d, Voltage: %dmV, Volume: %d%%", adc_reading, voltage, volume);
+
+    return volume;
+}
+
+/**
+ * @brief Clean up ADC resources (call this on shutdown)
+ */
+void speaker_potentiometer_deinit(void)
+{
+    if (cali_enable)
+    {
+#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
+        ESP_ERROR_CHECK(adc_cali_delete_scheme_curve_fitting(adc_cali_handle));
+#elif ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+        ESP_ERROR_CHECK(adc_cali_delete_scheme_line_fitting(adc_cali_handle));
+#endif
+    }
+
+    ESP_ERROR_CHECK(adc_oneshot_del_unit(adc_handle));
+    ESP_LOGI(TAG, "Potentiometer ADC deinitialized");
+}
+
+#endif
+
 esp_err_t ada_i2s_speaker_init(void)
 {
     ESP_LOGI(TAG, "Initializing I2S speaker driver...");
@@ -48,6 +221,18 @@ esp_err_t ada_i2s_speaker_init(void)
     {
         i2s_mutex = xSemaphoreCreateMutex();
     }
+
+#ifdef CONFIG_ADA_I2S_SPEAKER_ENABLE_POTENTIOMETER_VOLUME_CONTROL_YES
+
+    ret_val = speaker_potentiometer_init();
+    if (ret_val != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to initialize potentiometer ADC: %s", esp_err_to_name(ret_val));
+        return ret_val;
+    }
+    ESP_LOGI(TAG, "Potentiometer ADC initialized successfully");
+
+#endif
 
     ESP_LOGI(TAG, "Configuring I2S channel with sample rate: %d, channel format: %d, bits per channel: %d",
              SAMPLE_RATE, CHANNEL_FORMAT, BITS_PER_CHAN);
@@ -160,6 +345,13 @@ esp_err_t ada_i2s_speaker_deinit(void)
         ret_val |= del_ret;
     }
 
+#ifdef CONFIG_ADA_I2S_SPEAKER_ENABLE_POTENTIOMETER_VOLUME_CONTROL_YES
+
+    speaker_potentiometer_deinit();
+    ESP_LOGI(TAG, "Potentiometer ADC deinitialized successfully");
+
+#endif
+
     tx_handle = NULL;
     g_i2s_speaker_initialized = false;
     ESP_LOGI(TAG, "I2S speaker driver deinitialization %s", (ret_val == ESP_OK) ? "successful" : "failed");
@@ -200,7 +392,56 @@ esp_err_t ada_i2s_speaker_write(const void *src, size_t size, size_t *bytes_writ
     }
 
     ESP_LOGD(TAG, "Calling i2s_channel_write with size %u bytes", size);
+
+#ifdef CONFIG_ADA_I2S_SPEAKER_ENABLE_POTENTIOMETER_VOLUME_CONTROL_YES
+    uint8_t volume = speaker_potentiometer_volume_read();
+
+    if (volume == 0)
+    {
+        ESP_LOGW(TAG, "Volume is 0, not writing to I2S channel");
+        *bytes_written = 0;
+        return ESP_OK; // No data to write
+    }
+
+    // Make a scaled copy of the audio data based on volume level
+    int16_t *scaled_buffer = NULL;
+    if (volume < 100)
+    { // Only scale if volume is less than 100%
+        scaled_buffer = malloc(size);
+        if (scaled_buffer == NULL)
+        {
+            ESP_LOGE(TAG, "Failed to allocate memory for volume scaling");
+            *bytes_written = 0;
+            return ESP_ERR_NO_MEM;
+        }
+
+        // Scale each 16-bit sample by the volume percentage
+        const int16_t *src_16bit = (const int16_t *)src;
+        size_t sample_count = size / sizeof(int16_t);
+
+        for (size_t i = 0; i < sample_count; i++)
+        {
+            scaled_buffer[i] = (int16_t)((src_16bit[i] * volume) / 100);
+        }
+
+        // Use the scaled buffer instead of the original source
+        src = scaled_buffer;
+    }
+
+    // The original i2s_channel_write will be called after this code block
+    // After the write, free the scaled buffer if it was allocated
     esp_err_t ret = i2s_channel_write(tx_handle, src, size, bytes_written, ticks_to_wait);
+
+    // Clean up the scaled buffer
+    if (scaled_buffer != NULL)
+    {
+        free(scaled_buffer);
+    }
+
+#else
+    esp_err_t ret = i2s_channel_write(tx_handle, src, size, bytes_written, ticks_to_wait);
+
+#endif
 
     if (ret != ESP_OK)
     {

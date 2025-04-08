@@ -29,6 +29,9 @@
         "ada_i2s_speaker_driver_pinout.h": "c",
         "ada_i2s_microphone_driver_pinout.h": "c",
         "semphr.h": "c",
-        "stdbool.h": "c"
+        "stdbool.h": "c",
+        "gpio.h": "c",
+        "esp_err.h": "c",
+        "adc_oneshot.h": "c"
     }
 }
