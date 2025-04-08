@@ -31,7 +31,7 @@ static volatile detection_state_t current_state = STATE_DETECTING;
 static int16_t *recording_buffer = NULL;
 static size_t recording_length = 0;
 static size_t max_recording_length = 0;
-#define SILENCE_THRESHOLD 500           // Adjust based on your noise floor
+#define SILENCE_THRESHOLD 1000          // Adjust based on your noise floor
 #define SILENCE_DURATION_MS 1500        // Stop recording after 1.5 seconds of silence
 #define MIN_RECORDING_DURATION_MS 2000  // Minimum recording time (2 seconds)
 #define MAX_RECORDING_DURATION_MS 10000 // Maximum recording time (10 seconds)
@@ -121,6 +121,7 @@ void record_audio_task(void *arg)
     // wait for the animation and playback
     vTaskDelay(pdMS_TO_TICKS(500));
 
+    ada_led_strip_stop_effect();
     ada_led_strip_start_sequential_fade_out_with_duration(CONFIG_ADA_LED_STRIP_MAX_LEDS - 1, 0, 0, 100, MAX_RECORDING_DURATION_MS, true);
 
     int sample_rate = afe_handle->get_samp_rate(afe_data);
@@ -164,6 +165,7 @@ void record_audio_task(void *arg)
                 if (abs(mono_data[i]) > SILENCE_THRESHOLD)
                 {
                     is_silent = false;
+                    ESP_LOGI(TAG, "Noise detected: %d\n", abs(mono_data[i]) - SILENCE_THRESHOLD);
                     break;
                 }
             }
@@ -224,7 +226,7 @@ void detect_Task(void *arg)
     assert(buff);
 
     // Configure recording buffer
-    max_recording_length = 44100 * MAX_RECORDING_DURATION_MS / 1000 * sizeof(int16_t);
+    max_recording_length = afe_handle->get_samp_rate(afe_data) * MAX_RECORDING_DURATION_MS / 1000 * sizeof(int16_t);
     recording_buffer = malloc(max_recording_length);
     assert(recording_buffer);
 
