@@ -1,0 +1,27 @@
+menu "Ada Wake Word Detection Engine"
+
+    config ADA_WAKE_WORD_DETECTION_ENGINE_PROPABILITY_CUTOFF
+        int "Wake word detection engine propability cutoff"
+        range 1 100
+        default 97
+        help
+            The propability cutoff for the wake word detection engine.
+            The value is a percentage (1-100) and determines the minimum
+            confidence level required to trigger the wake word detection.
+            A higher value means a more confident detection, but may miss some
+            detections. A lower value means a less confident detection, but may
+            trigger false positives.
+            Default is 97%.
+
+    config ADA_WAKE_WORD_DETECTION_ENGINE_SLIDING_WINDOW_AVERAGE_SIZE
+        int "Wake word detection engine sliding window average size"
+        range 1 100
+        default 10
+        help
+            The size of the sliding window used to calculate the average
+            confidence level for the wake word detection engine.
+            A larger window size means a smoother average, but may introduce
+            more latency. A smaller window size means a more responsive average,
+            but may be more jittery.
+            Default is 10.
+endmenu
