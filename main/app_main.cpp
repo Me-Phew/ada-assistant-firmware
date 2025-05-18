@@ -15,12 +15,9 @@ extern "C" void app_main(void)
     if (ret != ESP_OK)
     {
         ESP_LOGE(TAG, "Failed to initialize Ada application: %s", esp_err_to_name(ret));
-        // TODO Handle error
-        return;
+        ESP_LOGE(TAG, "Restarting...");
+        esp_restart();
     }
 
-    while (true)
-    {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+    ada_application.run_shutdown_listener();
 }

@@ -16,7 +16,7 @@ namespace ada_assistant
 
         esp_err_t init();
 
-        ~AdaApplication();
+        void run_shutdown_listener();
 
     private:
         esp_event_loop_handle_t app_event_loop_handle_;
@@ -24,9 +24,37 @@ namespace ada_assistant
         microphone_driver::AdaMicrophoneDriver microphone_;
         wake_word_detection_engine::AdaWakeWordDetectionEngine wake_word_engine_;
 
+        gpio_num_t soft_enable_button_gpio;
+        int soft_enable_button_active_level;
+        int soft_enable_button_debounce_time_ms;
+        int soft_enable_button_polling_rate_ms;
+
+        gpio_num_t status_led_gpio;
+
+        bool is_shutdown_requested;
+
+        esp_err_t request_shutdown();
+
         void app_event_handler(esp_event_base_t event_base, int32_t event_id, void *event_data);
 
         static void app_event_handler_bridge(void *handler_args, esp_event_base_t event_base, int32_t event_id, void *event_data);
+
+        esp_err_t init_soft_enable_button();
+        bool is_soft_enable_button_on();
+
+        esp_err_t init_status_led();
+        esp_err_t set_status_led_state(bool on);
+
+        esp_err_t init_nvs();
+        esp_err_t init_event_loop();
+        esp_err_t init_components();
+
+        esp_err_t deinit_components();
+        esp_err_t deinit_event_loop();
+
+        esp_err_t configure_wakeup_source();
+
+        void shutdown();
     };
 }
 

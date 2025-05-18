@@ -92,19 +92,8 @@ namespace ada_assistant
             return this->microphone_.is_stopped();
         }
 
-        esp_err_t AdaMicrophoneDriver::deinit()
-        {
-            esp_err_t ret_val = ESP_OK;
-
-            this->microphone_.stop();
-
-            return ret_val;
-        }
-
         AdaMicrophoneDriver::~AdaMicrophoneDriver()
         {
-            this->deinit();
         }
-
     }
 }

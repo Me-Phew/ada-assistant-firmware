@@ -33,8 +33,6 @@ namespace ada_assistant
 
             esp_err_t init();
 
-            esp_err_t deinit();
-
             void setup();
             void start();
             void stop();
