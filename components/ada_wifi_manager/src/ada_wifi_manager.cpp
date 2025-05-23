@@ -6,6 +6,7 @@
 
 #include "ada_global_events.hpp"
 #include "ada_wifi_manager.hpp"
+#include <vector>
 
 namespace ada_assistant
 {
@@ -186,6 +187,24 @@ namespace ada_assistant
             ESP_ERROR_CHECK(esp_wifi_start());
 
             return ESP_OK;
+        }
+
+        esp_err_t AdaWiFiManager::connect_to_any_wifi(std::vector<settings_manager::WifiNetwork> wifi_networks)
+        {
+            // Connect to any available Wi-Fi network from the provided list
+            ESP_LOGI(TAG, "Connecting to any Wi-Fi network");
+
+            for (const auto &network : wifi_networks)
+            {
+                ESP_LOGI(TAG, "Trying to connect to SSID: %s", network.ssid);
+                esp_err_t ret = connect_to_wifi(network.ssid, network.password);
+                if (ret == ESP_OK)
+                {
+                    return ret;
+                }
+            }
+
+            return ESP_FAIL;
         }
 
         esp_err_t AdaWiFiManager::disconnect_from_wifi()

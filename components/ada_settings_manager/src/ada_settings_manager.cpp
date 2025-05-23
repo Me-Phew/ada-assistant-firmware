@@ -2,6 +2,7 @@
 #include "nvs_flash.h"
 #include "nvs.h"
 #include <cstring>
+#include <vector>
 
 #include "ada_settings_manager.hpp"
 
@@ -393,6 +394,22 @@ namespace ada_assistant
         const std::array<WifiNetwork, APP_MAX_WIFI_NETWORKS> &AdaSettingsManager::getWiFiCredentials() const
         {
             return wifi_networks_;
+        }
+
+        // Convinience function to get configured networks
+        std::vector<WifiNetwork> AdaSettingsManager::getConfiguredWiFiNetworks() const
+        {
+            std::vector<WifiNetwork> configured_networks;
+
+            for (const auto &net : wifi_networks_)
+            {
+                if (net.isConfigured())
+                {
+                    configured_networks.push_back(net);
+                }
+            }
+
+            return configured_networks;
         }
 
         uint8_t AdaSettingsManager::getConfiguredWiFiNetworkCount() const

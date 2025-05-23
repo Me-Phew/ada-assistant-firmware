@@ -173,6 +173,7 @@ namespace ada_assistant
             }
             else
             {
+                ESP_LOGI(TAG, "Device is paired with token: %s", config.pairing_token.c_str());
                 pairing_token_ = config.pairing_token;
             }
 

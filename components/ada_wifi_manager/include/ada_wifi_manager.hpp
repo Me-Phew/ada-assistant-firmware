@@ -28,6 +28,7 @@ namespace ada_assistant
             esp_err_t deinit();
 
             esp_err_t connect_to_wifi(const std::string &ssid, const std::string &password);
+            esp_err_t connect_to_any_wifi(std::vector<settings_manager::WifiNetwork> wifi_networks);
             esp_err_t disconnect_from_wifi();
 
             esp_err_t get_wifi_status();

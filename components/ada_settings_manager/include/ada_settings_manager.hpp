@@ -5,6 +5,7 @@
 #include "esp_event.h"
 #include "nvs_flash.h"
 #include <array>
+#include <vector>
 
 #include "ada_global_events.hpp"
 
@@ -91,6 +92,8 @@ namespace ada_assistant
             esp_err_t clearWiFiCredential(uint8_t index);
             // Gets the number of configured WiFi networks
             uint8_t getConfiguredWiFiNetworkCount() const;
+
+            std::vector<WifiNetwork> getConfiguredWiFiNetworks() const;
 
             // Pairing data
             const PairingData &getPairingData() const;

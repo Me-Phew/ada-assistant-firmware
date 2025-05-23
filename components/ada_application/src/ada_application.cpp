@@ -207,25 +207,6 @@ namespace ada_assistant
         return ret;
     }
 
-    // esp_err_t AdaApplication::init_components()
-    // {
-    //     ESP_LOGI(TAG, "Initializing components...");
-
-    //     settings_manager_.init(app_event_loop_handle_);
-    //     settings_manager_.loadSettingsFromNvs();
-
-    //     microphone_.init();
-
-    //     wake_word_engine_.init(app_event_loop_handle_);
-    //     wake_word_engine_.start();
-
-    //     bluetooth_manager_.init(app_event_loop_handle_);
-
-    //     ESP_LOGI(TAG, "Component initialization complete.");
-
-    //     return ESP_OK;
-    // }
-
     esp_err_t AdaApplication::setup_initial_state()
     {
         ESP_LOGI(TAG, "Setting up initial state...");
@@ -239,6 +220,10 @@ namespace ada_assistant
             settings_manager::PairingData pairing_data = settings_manager_.getPairingData();
             ESP_LOGI(TAG, "Device is paired. User ID: %s, Pairing Token: %s", pairing_data.userId, pairing_data.pairingToken);
             ESP_LOGI(TAG, "Preparing for operation.");
+
+            wifi_manager_.init(app_event_loop_handle_);
+
+            wifi_manager_.connect_to_any_wifi(settings_manager_.getConfiguredWiFiNetworks());
 
             microphone_.init();
 
@@ -385,11 +370,19 @@ namespace ada_assistant
             cloud_config.firmware_version = current_firmware_version_.c_str();
             cloud_config.oem_data = oem_data;
 
+            if (!settings_manager_.isPaired())
+            {
+                esp_err_t ret = cloud_services_.init(app_event_loop_handle_, cloud_config);
+                ESP_ERROR_CHECK(ret);
+
+                ret = cloud_services_.pair_device(user_id_);
+                ESP_ERROR_CHECK(ret);
+            }
+
+            cloud_config.pairing_token = settings_manager_.getPairingData().pairingToken;
             esp_err_t ret = cloud_services_.init(app_event_loop_handle_, cloud_config);
             ESP_ERROR_CHECK(ret);
 
-            ret = cloud_services_.pair_device(user_id_);
-            ESP_ERROR_CHECK(ret);
             break;
         }
         case APP_EVENT_PAIRING_COMPLETED:
