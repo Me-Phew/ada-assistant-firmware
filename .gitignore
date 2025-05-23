@@ -1,3 +1,7 @@
+venv
+device-69fdfad2.json
+oem_data.bin
+
 .pytest_cache/
 __pycache__/
 

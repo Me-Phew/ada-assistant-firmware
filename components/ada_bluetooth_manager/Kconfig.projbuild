@@ -1,0 +1,7 @@
+menu "Ada Bluetooth Manager"
+    
+    config ADA_BLUETOOTH_DEVICE_NAME
+        string "Bluetooth Device Name"
+        default "Ada Smart Assistant"
+
+endmenu

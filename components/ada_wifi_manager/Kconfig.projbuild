@@ -1,0 +1,17 @@
+menu "Ada WiFi Manager"
+
+    config ADA_WIFI_MAX_RETRIES
+        int "Max WiFi Connection Retries"
+        default 5
+        range 1 10
+        help
+            Maximum number of retries to connect to WiFi before giving up.
+    
+    config ADA_WIFI_TIMEOUT
+        int "WiFi Connection Timeout (seconds)"
+        default 30
+        range 1 120
+        help
+            Timeout duration for WiFi connection attempts.
+
+endmenu

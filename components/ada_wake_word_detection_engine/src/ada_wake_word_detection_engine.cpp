@@ -4,7 +4,7 @@
 #include "ada_wake_word_detection_engine.hpp"
 #include "hey_ada.h"
 
-#include "ada_global_events.h"
+#include "ada_global_events.hpp"
 
 namespace ada_assistant
 {
@@ -68,14 +68,14 @@ namespace ada_assistant
             ESP_LOGI(TAG, "Wake word detection task stopped.");
             esp_err_t ret = esp_event_post_to(this->app_event_loop_handle_,
                                               ADA_APP_EVENT_BASE,
-                                              ADA_WAKE_WORD_DETECTION_STOPPED,
+                                              APP_EVENT_WAKE_WORD_DETECTION_STOPPED,
                                               NULL,
                                               0,
                                               portMAX_DELAY);
 
             if (ret != ESP_OK)
             {
-                ESP_LOGE(TAG, "Failed to post ADA_WAKE_WORD_DETECTION_STOPPED: %s", esp_err_to_name(ret));
+                ESP_LOGE(TAG, "Failed to post APP_EVENT_WAKE_WORD_DETECTION_STOPPED: %s", esp_err_to_name(ret));
             }
 
             return ret;
@@ -109,7 +109,7 @@ namespace ada_assistant
 
             esp_err_t ret = esp_event_post_to(this->app_event_loop_handle_,
                                               ADA_APP_EVENT_BASE,
-                                              ADA_WAKE_WORD_DETECTED,
+                                              APP_EVENT_WAKE_WORD_DETECTED,
                                               detected_wake_word.c_str(),
                                               detected_wake_word.length() + 1,
                                               portMAX_DELAY);
