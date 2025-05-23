@@ -76,8 +76,6 @@ namespace ada_assistant
 
             esp_err_t init(esp_event_loop_handle_t app_event_loop_handle);
 
-            bool nvsHasStoredSettings();
-
             esp_err_t loadSettingsFromNvs();
 
             esp_err_t loadDefaultSettings();
@@ -121,7 +119,6 @@ namespace ada_assistant
 
             // NVS Namespace and Keys (static const char* for keys is good practice)
             static const char *NVS_NAMESPACE;
-            static const char *NVS_KEY_INITIALIZED_FLAG;
             static const char *NVS_KEY_WIFI_NETWORKS;
             static const char *NVS_KEY_PAIRING_DATA;
             static const char *NVS_KEY_SPEAKER_VOL;
@@ -132,8 +129,8 @@ namespace ada_assistant
             // Default values
             // For structs, you might define them fully in the .cpp file if complex,
             // or use C++11 initializers here if simple.
-            static const uint8_t DEFAULT_SPEAKER_VOLUME = 75;        // Example value
-            static const uint8_t DEFAULT_LED_STRIP_BRIGHTNESS = 100; // Example value
+            static const uint8_t DEFAULT_SPEAKER_VOLUME = 100;
+            static const uint8_t DEFAULT_LED_STRIP_BRIGHTNESS = 128;
             static const WakeWordSensitivity DEFAULT_WAKE_WORD_SENSITIVITY = WakeWordSensitivity::MEDIUM;
             // C++11 in-class static const member initialization for the struct
             static const PowerOnLedSettings DEFAULT_POWER_ON_LED_SETTINGS;

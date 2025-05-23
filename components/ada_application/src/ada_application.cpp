@@ -211,15 +211,15 @@ namespace ada_assistant
     // {
     //     ESP_LOGI(TAG, "Initializing components...");
 
-    //     this->settings_manager_.init(app_event_loop_handle_);
-    //     this->settings_manager_.loadSettingsFromNvs();
+    //     settings_manager_.init(app_event_loop_handle_);
+    //     settings_manager_.loadSettingsFromNvs();
 
-    //     this->microphone_.init();
+    //     microphone_.init();
 
-    //     this->wake_word_engine_.init(app_event_loop_handle_);
-    //     this->wake_word_engine_.start();
+    //     wake_word_engine_.init(app_event_loop_handle_);
+    //     wake_word_engine_.start();
 
-    //     this->bluetooth_manager_.init(app_event_loop_handle_);
+    //     bluetooth_manager_.init(app_event_loop_handle_);
 
     //     ESP_LOGI(TAG, "Component initialization complete.");
 
@@ -231,14 +231,19 @@ namespace ada_assistant
         ESP_LOGI(TAG, "Setting up initial state...");
 
         ESP_LOGI(TAG, "Checking app settings");
-        this->settings_manager_.init(app_event_loop_handle_);
-        this->settings_manager_.loadSettingsFromNvs();
+        settings_manager_.init(app_event_loop_handle_);
+        settings_manager_.loadSettingsFromNvs();
 
-        if (this->settings_manager_.isPaired())
+        if (settings_manager_.isPaired())
         {
-            settings_manager::PairingData pairing_data = this->settings_manager_.getPairingData();
+            settings_manager::PairingData pairing_data = settings_manager_.getPairingData();
             ESP_LOGI(TAG, "Device is paired. User ID: %s, Pairing Token: %s", pairing_data.userId, pairing_data.pairingToken);
             ESP_LOGI(TAG, "Preparing for operation.");
+
+            microphone_.init();
+
+            wake_word_engine_.init(app_event_loop_handle_);
+            wake_word_engine_.start();
 
             return ESP_OK;
         }
@@ -246,8 +251,8 @@ namespace ada_assistant
         ESP_LOGI(TAG, "Device is not paired.");
         ESP_LOGI(TAG, "Preparing for initial setup.");
 
-        this->bluetooth_manager_.init(app_event_loop_handle_);
-        this->bluetooth_manager_.start_setup_mode();
+        bluetooth_manager_.init(app_event_loop_handle_);
+        bluetooth_manager_.start_setup_mode();
 
         return ESP_OK;
     }
@@ -257,7 +262,7 @@ namespace ada_assistant
         ESP_LOGI(TAG, "Requesting shutdown...");
 
         esp_event_post_to(app_event_loop_handle_, ADA_APP_EVENT_BASE, APP_EVENT_DEVICE_SHUTDOWN_REQUESTED, NULL, 0, portMAX_DELAY);
-        this->is_shutdown_requested = true;
+        is_shutdown_requested = true;
 
         return ESP_OK;
     }
@@ -268,16 +273,16 @@ namespace ada_assistant
         ESP_LOGI(TAG, "Stack usage: %d bytes", uxTaskGetStackHighWaterMark(NULL));
         ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
 
-        esp_err_t ret = this->init_status_led();
+        esp_err_t ret = init_status_led();
         ESP_ERROR_CHECK(ret);
 
-        ret = this->init_soft_enable_button();
+        ret = init_soft_enable_button();
         ESP_ERROR_CHECK(ret);
 
         if (!is_soft_enable_button_on())
         {
             ESP_LOGI(TAG, "Soft enable button is off. Shutting down.");
-            this->is_shutdown_requested = true;
+            is_shutdown_requested = true;
 
             set_status_led_state(false);
 
@@ -286,26 +291,26 @@ namespace ada_assistant
 
         ESP_LOGI(TAG, "Soft enable button is on. Device is in startup.");
 
-        ret = this->load_oem_data();
+        ret = load_oem_data();
         ESP_ERROR_CHECK(ret);
 
         if (ret != ESP_OK)
         {
             ESP_LOGE(TAG, "Failed to load OEM data. Shutting down.");
-            this->is_shutdown_requested = true;
+            is_shutdown_requested = true;
 
             set_status_led_state(false);
 
             return ret;
         }
 
-        ret = this->init_nvs();
+        ret = init_nvs();
         ESP_ERROR_CHECK(ret);
 
-        ret = this->init_event_loop();
+        ret = init_event_loop();
         ESP_ERROR_CHECK(ret);
 
-        ret = this->setup_initial_state();
+        ret = setup_initial_state();
         ESP_ERROR_CHECK(ret);
 
         ESP_LOGI(TAG, "Application initialization finished. Handing off control to the event loop.");
@@ -445,16 +450,16 @@ namespace ada_assistant
     {
         ESP_LOGI(TAG, "Running until shutdown requested");
 
-        while (!this->is_shutdown_requested)
+        while (!is_shutdown_requested)
         {
-            if (!this->is_soft_enable_button_on())
+            if (!is_soft_enable_button_on())
             {
                 vTaskDelay(pdMS_TO_TICKS(soft_enable_button_debounce_time_ms));
 
-                if (!this->is_soft_enable_button_on())
+                if (!is_soft_enable_button_on())
                 {
                     ESP_LOGI(TAG, "Soft enable button is off. Shutting down.");
-                    this->is_shutdown_requested = true;
+                    is_shutdown_requested = true;
 
                     break;
                 }
@@ -465,21 +470,21 @@ namespace ada_assistant
             vTaskDelay(pdMS_TO_TICKS(soft_enable_button_polling_rate_ms));
         }
 
-        this->shutdown();
+        shutdown();
     }
 
     esp_err_t AdaApplication::deinit_components()
     {
         ESP_LOGI(TAG, "Deinitializing components...");
 
-        if (this->wake_word_engine_.wakeWord_.is_running())
+        if (wake_word_engine_.wakeWord_.is_running())
         {
-            this->wake_word_engine_.stop();
+            wake_word_engine_.stop();
         }
 
-        if (this->microphone_.is_running())
+        if (microphone_.is_running())
         {
-            this->microphone_.stop();
+            microphone_.stop();
         }
 
         ESP_LOGI(TAG, "Component deinitialization complete.");
@@ -538,16 +543,16 @@ namespace ada_assistant
     {
         ESP_LOGI(TAG, "Application is in shutdown.");
 
-        esp_err_t ret = this->deinit_components();
+        esp_err_t ret = deinit_components();
         ESP_ERROR_CHECK(ret);
 
-        ret = this->deinit_event_loop();
+        ret = deinit_event_loop();
         ESP_ERROR_CHECK(ret);
 
-        ret = this->configure_wakeup_source();
+        ret = configure_wakeup_source();
         ESP_ERROR_CHECK(ret);
 
-        ret = this->set_status_led_state(false);
+        ret = set_status_led_state(false);
         ESP_ERROR_CHECK(ret);
 
         // Small delay to allow log messages to be flushed

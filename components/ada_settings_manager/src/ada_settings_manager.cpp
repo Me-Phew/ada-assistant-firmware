@@ -13,7 +13,6 @@ namespace ada_assistant
 
         // --- NVS Key Definitions ---
         const char *AdaSettingsManager::NVS_NAMESPACE = "ada_settings";
-        const char *AdaSettingsManager::NVS_KEY_INITIALIZED_FLAG = "initialized";
         const char *AdaSettingsManager::NVS_KEY_WIFI_NETWORKS = "wifi_nets";
         const char *AdaSettingsManager::NVS_KEY_PAIRING_DATA = "pairing_data";
         const char *AdaSettingsManager::NVS_KEY_SPEAKER_VOL = "spk_vol";
@@ -90,53 +89,10 @@ namespace ada_assistant
                 return ret;
             }
 
-            if (nvsHasStoredSettings())
-            {
-                ESP_LOGI(TAG, "Found stored settings in NVS. Loading them.");
-                ret = loadSettingsFromNvs();
-
-                if (ret != ESP_OK)
-                {
-                    ESP_LOGE(TAG, "Failed to load settings from NVS: %s. Loading defaults.", esp_err_to_name(ret));
-                    // Fallback to defaults if loading fails
-                    ret = loadDefaultSettings();
-                }
-
-                return ret;
-            }
-
             ESP_LOGI(TAG, "No stored settings found in NVS or initialization flag missing. Loading default settings.");
             ret = loadDefaultSettings();
 
             return ret;
-        }
-
-        bool AdaSettingsManager::nvsHasStoredSettings()
-        {
-            if (!is_nvs_open_)
-            {
-                ESP_LOGE(TAG, "NVS not open in loadSettingsFromNvs.");
-                return ESP_ERR_NVS_NOT_INITIALIZED;
-            }
-
-            uint8_t initialized_flag = 0;
-            esp_err_t err = nvs_get_u8(nvs_handle_, NVS_KEY_INITIALIZED_FLAG, &initialized_flag);
-
-            if (err == ESP_OK && initialized_flag == 1)
-            {
-                ESP_LOGD(TAG, "NVS_KEY_INITIALIZED_FLAG found and set to 1.");
-                return true;
-            }
-
-            if (err == ESP_ERR_NVS_NOT_FOUND)
-            {
-                ESP_LOGI(TAG, "NVS_KEY_INITIALIZED_FLAG not found.");
-                return false;
-            }
-
-            ESP_LOGE(TAG, "Error reading NVS_KEY_INITIALIZED_FLAG: %s", esp_err_to_name(err));
-
-            return false;
         }
 
         esp_err_t AdaSettingsManager::loadSettingsFromNvs()
@@ -289,15 +245,6 @@ namespace ada_assistant
             if (err != ESP_OK)
             {
                 ESP_LOGE(TAG, "Failed to save power LED settings: %s", esp_err_to_name(err));
-                return err;
-            }
-
-            // After all settings are successfully saved, set the initialized flag
-            uint8_t initialized_flag = 1;
-            err = nvs_set_u8(nvs_handle_, NVS_KEY_INITIALIZED_FLAG, initialized_flag);
-            if (err != ESP_OK)
-            {
-                ESP_LOGE(TAG, "Failed to set NVS_KEY_INITIALIZED_FLAG: %s", esp_err_to_name(err));
                 return err;
             }
 
