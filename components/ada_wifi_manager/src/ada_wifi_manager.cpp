@@ -141,7 +141,7 @@ namespace ada_assistant
                         .rssi = -127,                              // Default: -127 (no RSSI threshold if authmode is not WIFI_SCAN_AUTH_MODE_THRESHOLD)
                                                                    // If authmode IS WIFI_SCAN_AUTH_MODE_THRESHOLD, this is the minimum RSSI.
                         .authmode = WIFI_SCAN_AUTH_MODE_THRESHOLD, // Your original setting
-                        .rssi_5g_adjustment = 0,                   // No adjustment by default
+                        // .rssi_5g_adjustment = 0,                   // No adjustment by default
                     },
 
                     .pmf_cfg = {

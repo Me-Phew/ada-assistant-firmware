@@ -1,0 +1,30 @@
+menu "Ada Speaker Driver"
+
+    config ADA_SPEAKER_DRIVER_I2S_PORT
+        int "I2S port number"
+        range 0 1
+        default 0
+        help
+            I2S number to use for the microphone driver.
+            This is used to select the I2S peripheral to use for the microphone driver.
+            The default is 0, which is the first I2S peripheral.
+            The second I2S peripheral is 1.
+
+    config ADA_SPEAKER_DRIVER_SAMPLE_RATE
+        int "Sample rate"
+        range 8000 96000
+        default 44100
+        help
+            Sample rate to use for the microphone driver.
+            This is used to select the sample rate for the I2S peripheral.
+            The default is 44100, which offers great audio quality.
+
+    config ADA_SPEAKER_DRIVER_BITS_PER_SAMPLE
+        int "Bits per sample"
+        range 8 32
+        default 16
+        help
+            Bits per sample to use for the microphone driver.
+            This is used to select the bits per sample for the I2S peripheral.
+            The default is 16, which offers great audio quality.
+endmenu

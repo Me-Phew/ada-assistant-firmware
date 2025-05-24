@@ -4,10 +4,12 @@
 #include "esp_err.h"
 #include "esp_event.h"
 #include "string"
+#include "esp_spiffs.h"
 
 #include "ada_oem_data.h"
 
 #include "ada_settings_manager.hpp"
+#include "ada_speaker_driver.hpp"
 #include "ada_bluetooth_manager.hpp"
 #include "ada_wifi_manager.hpp"
 #include "ada_cloud_services.hpp"
@@ -33,6 +35,7 @@ namespace ada_assistant
         esp_event_loop_handle_t app_event_loop_handle_;
 
         settings_manager::AdaSettingsManager settings_manager_;
+        speaker_driver::AdaSpeakerDriver speaker_driver_;
         bluetooth_manager::AdaBluetoothManager bluetooth_manager_;
         wifi_manager::AdaWiFiManager wifi_manager_;
         cloud_services::AdaCloudServices cloud_services_;
@@ -53,6 +56,8 @@ namespace ada_assistant
         uint16_t calculate_oem_data_crc16();
         bool verify_oem_data_integrity();
         esp_err_t load_oem_data();
+
+        esp_err_t mountSPIFFSPartition(char *path, char *label, size_t max_files);
 
         esp_err_t request_shutdown();
 

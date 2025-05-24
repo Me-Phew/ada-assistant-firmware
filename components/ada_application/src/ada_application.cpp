@@ -23,6 +23,7 @@ namespace ada_assistant
                                        oem_data(),
                                        app_event_loop_handle_(nullptr),
                                        settings_manager_(),
+                                       speaker_driver_(),
                                        bluetooth_manager_(),
                                        wifi_manager_(),
                                        cloud_services_(),
@@ -158,6 +159,50 @@ namespace ada_assistant
         return ret;
     }
 
+    esp_err_t AdaApplication::mountSPIFFSPartition(char *path, char *label, size_t max_files)
+    {
+        ESP_LOGI(TAG, "Mounting SPIFFS %s to %s", path, label);
+
+        esp_vfs_spiffs_conf_t conf = {
+            .base_path = path,
+            .partition_label = label,
+            .max_files = max_files,
+            .format_if_mount_failed = true};
+
+        esp_err_t ret = esp_vfs_spiffs_register(&conf);
+
+        if (ret != ESP_OK)
+        {
+            if (ret == ESP_FAIL)
+            {
+                ESP_LOGE(TAG, "Failed to mount or format filesystem");
+            }
+            else if (ret == ESP_ERR_NOT_FOUND)
+            {
+                ESP_LOGE(TAG, "Failed to find SPIFFS partition");
+            }
+            else
+            {
+                ESP_LOGE(TAG, "Failed to initialize SPIFFS (%s)", esp_err_to_name(ret));
+            }
+            return ret;
+        }
+
+        size_t total = 0, used = 0;
+        ret = esp_spiffs_info(conf.partition_label, &total, &used);
+        if (ret != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to get SPIFFS partition information (%s)", esp_err_to_name(ret));
+        }
+        else
+        {
+            ESP_LOGI(TAG, "Mount %s to %s success", path, label);
+            ESP_LOGI(TAG, "Partition size: total: %d, used: %d", total, used);
+        }
+
+        return ret;
+    }
+
     esp_err_t AdaApplication::init_event_loop()
     {
         esp_err_t ret = esp_event_loop_create_default();
@@ -212,8 +257,18 @@ namespace ada_assistant
         ESP_LOGI(TAG, "Setting up initial state...");
 
         ESP_LOGI(TAG, "Checking app settings");
-        settings_manager_.init(app_event_loop_handle_);
-        settings_manager_.loadSettingsFromNvs();
+        esp_err_t ret = settings_manager_.init(app_event_loop_handle_);
+        ret = settings_manager_.loadSettingsFromNvs();
+
+        ret = mountSPIFFSPartition("/audio", "audio", 6);
+
+        if (ret != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to mount SPIFFS: %s", esp_err_to_name(ret));
+            return ESP_FAIL;
+        }
+
+        speaker_driver_.init(app_event_loop_handle_, settings_manager_.getSpeakerVolume());
 
         if (settings_manager_.isPaired())
         {
@@ -225,10 +280,7 @@ namespace ada_assistant
 
             wifi_manager_.connect_to_any_wifi(settings_manager_.getConfiguredWiFiNetworks());
 
-            microphone_.init();
-
-            wake_word_engine_.init(app_event_loop_handle_);
-            wake_word_engine_.start();
+            set_status_led_state(true);
 
             return ESP_OK;
         }
@@ -238,6 +290,9 @@ namespace ada_assistant
 
         bluetooth_manager_.init(app_event_loop_handle_);
         bluetooth_manager_.start_setup_mode();
+
+        set_status_led_state(true);
+        speaker_driver_.play_mp3_file("/audio/initial_setup.mp3");
 
         return ESP_OK;
     }
@@ -277,7 +332,6 @@ namespace ada_assistant
         ESP_LOGI(TAG, "Soft enable button is on. Device is in startup.");
 
         ret = load_oem_data();
-        ESP_ERROR_CHECK(ret);
 
         if (ret != ESP_OK)
         {
@@ -320,7 +374,6 @@ namespace ada_assistant
         case APP_EVENT_DEVICE_READY:
         {
             ESP_LOGI(TAG, "Main loop control handoff successful");
-            set_status_led_state(true);
             break;
         }
 
@@ -383,6 +436,20 @@ namespace ada_assistant
             esp_err_t ret = cloud_services_.init(app_event_loop_handle_, cloud_config);
             ESP_ERROR_CHECK(ret);
 
+            microphone_.init();
+
+            wake_word_engine_.init(app_event_loop_handle_);
+            wake_word_engine_.start();
+
+            set_status_led_state(true);
+            speaker_driver_.play_mp3_file("/audio/welcome_back.mp3");
+
+            break;
+        }
+        case APP_EVENT_WIFI_DISCONNECTED:
+        {
+            ESP_LOGI(TAG, "Wi-Fi disconnected");
+            speaker_driver_.play_mp3_file("/audio/lost_wifi_connection.mp3");
             break;
         }
         case APP_EVENT_PAIRING_COMPLETED:
@@ -396,7 +463,7 @@ namespace ada_assistant
             ret = bluetooth_manager_.finalize_setup_and_disable_ble();
             ESP_ERROR_CHECK(ret);
 
-            // TODO Sound
+            speaker_driver_.play_mp3_file("/audio/setup_complete.mp3");
 
             ret = microphone_.init();
             ESP_ERROR_CHECK(ret);

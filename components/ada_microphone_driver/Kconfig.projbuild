@@ -27,13 +27,12 @@ menu "Ada Microphone Driver"
     config ADA_MICROPHONE_DRIVER_I2S_PORT
         int "I2S port number"
         range 0 1
-        default 0
+        default 1
         help
             I2S number to use for the microphone driver.
             This is used to select the I2S peripheral to use for the microphone driver.
-            The default is 0, which is the first I2S peripheral.
-            The second I2S peripheral is 1.
-    
+            The default is 1, which is the second I2S peripheral.
+            The first I2S peripheral is 0.
 
     config ADA_MICROPHONE_DRIVER_SAMPLE_RATE
         int "Microphone sample rate"
