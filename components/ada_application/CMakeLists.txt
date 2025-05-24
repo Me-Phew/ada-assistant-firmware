@@ -3,6 +3,7 @@ idf_component_register(SRCS "src/ada_application.cpp"
                        REQUIRES 
                            ada_settings_manager 
                            ada_speaker_driver
+                           ada_led_strip_driver
                            ada_bluetooth_manager
                            ada_wifi_manager
                            ada_cloud_services

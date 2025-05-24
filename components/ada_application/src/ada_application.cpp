@@ -24,6 +24,7 @@ namespace ada_assistant
                                        app_event_loop_handle_(nullptr),
                                        settings_manager_(),
                                        speaker_driver_(),
+                                       led_strip_driver_(),
                                        bluetooth_manager_(),
                                        wifi_manager_(),
                                        cloud_services_(),
@@ -270,6 +271,8 @@ namespace ada_assistant
 
         speaker_driver_.init(app_event_loop_handle_, settings_manager_.getSpeakerVolume());
 
+        led_strip_driver_.init(app_event_loop_handle_, settings_manager_.getLedStripBrightness());
+
         if (settings_manager_.isPaired())
         {
             settings_manager::PairingData pairing_data = settings_manager_.getPairingData();
@@ -293,6 +296,7 @@ namespace ada_assistant
 
         set_status_led_state(true);
         speaker_driver_.play_mp3_file("/audio/initial_setup.mp3");
+        led_strip_driver_.set_all_leds_to_color(0, 0, 255); // Blue
 
         return ESP_OK;
     }
@@ -443,6 +447,7 @@ namespace ada_assistant
 
             set_status_led_state(true);
             speaker_driver_.play_mp3_file("/audio/welcome_back.mp3");
+            led_strip_driver_.set_all_leds_to_color(0, 255, 0); // Green
 
             break;
         }
@@ -450,6 +455,7 @@ namespace ada_assistant
         {
             ESP_LOGI(TAG, "Wi-Fi disconnected");
             speaker_driver_.play_mp3_file("/audio/lost_wifi_connection.mp3");
+            led_strip_driver_.set_all_leds_to_color(255, 0, 0); // Red
             break;
         }
         case APP_EVENT_PAIRING_COMPLETED:
@@ -464,6 +470,7 @@ namespace ada_assistant
             ESP_ERROR_CHECK(ret);
 
             speaker_driver_.play_mp3_file("/audio/setup_complete.mp3");
+            led_strip_driver_.set_all_leds_to_color(255, 165, 0); // Amber
 
             ret = microphone_.init();
             ESP_ERROR_CHECK(ret);

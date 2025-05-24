@@ -10,6 +10,7 @@
 
 #include "ada_settings_manager.hpp"
 #include "ada_speaker_driver.hpp"
+#include "ada_led_strip_driver.hpp"
 #include "ada_bluetooth_manager.hpp"
 #include "ada_wifi_manager.hpp"
 #include "ada_cloud_services.hpp"
@@ -36,6 +37,7 @@ namespace ada_assistant
 
         settings_manager::AdaSettingsManager settings_manager_;
         speaker_driver::AdaSpeakerDriver speaker_driver_;
+        led_strip_driver::AdaLedStripDriver led_strip_driver_;
         bluetooth_manager::AdaBluetoothManager bluetooth_manager_;
         wifi_manager::AdaWiFiManager wifi_manager_;
         cloud_services::AdaCloudServices cloud_services_;
