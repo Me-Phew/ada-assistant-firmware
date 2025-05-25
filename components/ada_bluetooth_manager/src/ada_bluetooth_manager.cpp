@@ -108,19 +108,19 @@ namespace ada_assistant
             [IDX_CHAR_SSID] = {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_declaration_uuid, ESP_GATT_PERM_READ, sizeof(uint8_t), sizeof(uint8_t), (uint8_t *)&char_prop_read_write}},
 
             /* SSID Characteristic Value */
-            [IDX_CHAR_VAL_SSID] = {{ESP_GATT_AUTO_RSP}, {GATTS_CHAR_UUID_SSID.len, (uint8_t *)&GATTS_CHAR_UUID_SSID.uuid, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE | ESP_GATT_PERM_WRITE_ENCRYPTED, MAX_SSID_LEN, sizeof(char_value_ssid), (uint8_t *)char_value_ssid}},
+            [IDX_CHAR_VAL_SSID] = {{ESP_GATT_AUTO_RSP}, {GATTS_CHAR_UUID_SSID.len, (uint8_t *)&GATTS_CHAR_UUID_SSID.uuid, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE, MAX_SSID_LEN, sizeof(char_value_ssid), (uint8_t *)char_value_ssid}},
 
             /* Password Characteristic Declaration */
             [IDX_CHAR_PASSWORD] = {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_declaration_uuid, ESP_GATT_PERM_READ, sizeof(uint8_t), sizeof(uint8_t), (uint8_t *)&char_prop_read_write}},
 
             /* Password Characteristic Value */
-            [IDX_CHAR_VAL_PASSWORD] = {{ESP_GATT_AUTO_RSP}, {GATTS_CHAR_UUID_PASSWORD.len, (uint8_t *)&GATTS_CHAR_UUID_PASSWORD.uuid, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE | ESP_GATT_PERM_WRITE_ENCRYPTED, MAX_PASSWORD_LEN, sizeof(char_value_password), (uint8_t *)char_value_password}},
+            [IDX_CHAR_VAL_PASSWORD] = {{ESP_GATT_AUTO_RSP}, {GATTS_CHAR_UUID_PASSWORD.len, (uint8_t *)&GATTS_CHAR_UUID_PASSWORD.uuid, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE, MAX_PASSWORD_LEN, sizeof(char_value_password), (uint8_t *)char_value_password}},
 
             /* User ID Characteristic Declaration */
             [IDX_CHAR_USER_ID] = {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_declaration_uuid, ESP_GATT_PERM_READ, sizeof(uint8_t), sizeof(uint8_t), (uint8_t *)&char_prop_read_write}},
 
             /* User ID Characteristic Value */
-            [IDX_CHAR_VAL_USER_ID] = {{ESP_GATT_AUTO_RSP}, {GATTS_CHAR_UUID_USER_ID.len, (uint8_t *)&GATTS_CHAR_UUID_USER_ID.uuid, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE | ESP_GATT_PERM_WRITE_ENCRYPTED, MAX_USER_ID_LEN, sizeof(char_value_user_id), (uint8_t *)char_value_user_id}},
+            [IDX_CHAR_VAL_USER_ID] = {{ESP_GATT_AUTO_RSP}, {GATTS_CHAR_UUID_USER_ID.len, (uint8_t *)&GATTS_CHAR_UUID_USER_ID.uuid, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE, MAX_USER_ID_LEN, sizeof(char_value_user_id), (uint8_t *)char_value_user_id}},
 
             /* Status Characteristic Declaration */
             [IDX_CHAR_STATUS] = {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_declaration_uuid, ESP_GATT_PERM_READ, sizeof(uint8_t), sizeof(uint8_t), (uint8_t *)&char_prop_read_notify}},
@@ -135,7 +135,7 @@ namespace ada_assistant
             [IDX_CHAR_CONTROL] = {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_declaration_uuid, ESP_GATT_PERM_READ, sizeof(uint8_t), sizeof(uint8_t), (uint8_t *)&char_prop_write}},
 
             /* Control Characteristic Value */
-            [IDX_CHAR_VAL_CONTROL] = {{ESP_GATT_AUTO_RSP}, {GATTS_CHAR_UUID_CONTROL.len, (uint8_t *)&GATTS_CHAR_UUID_CONTROL.uuid, ESP_GATT_PERM_WRITE | ESP_GATT_PERM_WRITE_ENCRYPTED, sizeof(char_value_control), sizeof(char_value_control), (uint8_t *)char_value_control}}};
+            [IDX_CHAR_VAL_CONTROL] = {{ESP_GATT_AUTO_RSP}, {GATTS_CHAR_UUID_CONTROL.len, (uint8_t *)&GATTS_CHAR_UUID_CONTROL.uuid, ESP_GATT_PERM_WRITE, sizeof(char_value_control), sizeof(char_value_control), (uint8_t *)char_value_control}}};
 
         AdaBluetoothManager::AdaBluetoothManager() : m_app_event_loop_handle(nullptr),
                                                      m_is_ble_initialized(false),
@@ -246,7 +246,7 @@ namespace ada_assistant
             //    - ESP_LE_AUTH_REQ_BOND: Legacy Pairing, No MITM, Bonding
             //    - ESP_LE_AUTH_NO_BOND: No Bonding (keys not stored)
             //    For "Just Works" with encryption and saving the bond:
-            esp_ble_auth_req_t auth_req = ESP_LE_AUTH_REQ_SC_BOND; // Prioritize Secure Connections
+            esp_ble_auth_req_t auth_req = ESP_LE_AUTH_NO_BOND; // Prioritize Secure Connections
             // If SC fails or peer doesn't support, it might fall back to legacy if not strictly SC_ONLY.
             // esp_ble_auth_req_t auth_req = ESP_LE_AUTH_BOND; // For legacy pairing (if SC is an issue)
             ret = esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth_req, sizeof(uint8_t));
@@ -655,6 +655,7 @@ namespace ada_assistant
                 break;
 
             case ESP_GATTS_CONNECT_EVT:
+            {
                 ESP_LOGI(TAG, "GATTS_CONNECT_EVT, conn_id: %d, if: %d, remote_bda: %02x:%02x:%02x:%02x:%02x:%02x",
                          param->connect.conn_id, gatts_if,
                          param->connect.remote_bda[0], param->connect.remote_bda[1], param->connect.remote_bda[2],
@@ -677,16 +678,14 @@ namespace ada_assistant
 
                 esp_event_post_to(m_app_event_loop_handle, ADA_APP_EVENT_BASE, APP_EVENT_BLE_DEV_CONNECTED, NULL, 0, portMAX_DELAY);
 
-                esp_ble_set_encryption(param->connect.remote_bda, ESP_BLE_SEC_ENCRYPT_NO_MITM);
-
-                // Initiate pairing/bonding if desired (ESP32 acts as slave)
-                // Example: esp_ble_set_encryption(param->connect.remote_bda, ESP_BLE_SEC_ENCRYPT_MITM);
-                // This will trigger security events (ESP_GAP_BLE_SEC_REQ_EVT, etc.)
-                // For "Just Works" pairing, often no explicit call is needed if device is bondable and security is set.
-                // Ensure GAP security parameters are set if bonding is required.
-                // (e.g. esp_ble_gap_set_security_param)
+                ESP_LOGI(TAG, "Attempting to encrypt link (Just Works, no bonding)...");
+                esp_err_t enc_ret = esp_ble_set_encryption(param->connect.remote_bda, ESP_BLE_SEC_ENCRYPT_NO_MITM);
+                if (enc_ret != ESP_OK)
+                {
+                    ESP_LOGE(TAG, "Failed to initiate encryption: %s", esp_err_to_name(enc_ret));
+                }
                 break;
-
+            }
             case ESP_GATTS_DISCONNECT_EVT:
                 ESP_LOGI(TAG, "GATTS_DISCONNECT_EVT, conn_id: %d, if: %d, reason: 0x%x (%s)",
                          param->disconnect.conn_id, gatts_if, param->disconnect.reason, esp_err_to_name(param->disconnect.reason));
