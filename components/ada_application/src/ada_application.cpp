@@ -261,7 +261,7 @@ namespace ada_assistant
         esp_err_t ret = settings_manager_.init(app_event_loop_handle_);
         ret = settings_manager_.loadSettingsFromNvs();
 
-        ret = mountSPIFFSPartition("/audio", "audio", 6);
+        ret = mountSPIFFSPartition("/audio", "audio", 8);
 
         if (ret != ESP_OK)
         {
@@ -271,7 +271,9 @@ namespace ada_assistant
 
         speaker_driver_.init(app_event_loop_handle_, settings_manager_.getSpeakerVolume());
 
+        // ! LED strip brightness control here
         led_strip_driver_.init(app_event_loop_handle_, settings_manager_.getLedStripBrightness());
+        // led_strip_driver_.init(app_event_loop_handle_, 5);
 
         if (settings_manager_.isPaired())
         {
@@ -378,9 +380,22 @@ namespace ada_assistant
         case APP_EVENT_DEVICE_READY:
         {
             ESP_LOGI(TAG, "Main loop control handoff successful");
+
+            led_strip_driver_.set_all_leds_to_color(0, 255, 0); // Green
+
             break;
         }
 
+        case APP_EVENT_BLE_DEV_CONNECTED:
+        {
+            ESP_LOGI(TAG, "BLE device connected");
+
+            led_strip_driver_.start_flashing_effect({.r = 66,
+                                                     .g = 135,
+                                                     .b = 245,
+                                                     .duration_ms = 500});
+            break;
+        }
         case APP_EVENT_BLE_SETUP_DATA_RECEIVED:
         {
             ESP_LOGI(TAG, "BLE setup data received");
@@ -397,6 +412,10 @@ namespace ada_assistant
             ESP_LOGI(TAG, "Received User ID: %s", setup_data->user_id);
 
             user_id_ = setup_data->user_id;
+
+            ESP_LOGI(TAG, "Free internal heap: %d", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+            ESP_LOGI(TAG, "Free SPIRAM heap: %d", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+            ESP_LOGI(TAG, "Total free heap: %lu", esp_get_free_heap_size());
 
             esp_err_t ret = wifi_manager_.init(app_event_loop_handle_);
             ESP_ERROR_CHECK(ret);
@@ -423,7 +442,7 @@ namespace ada_assistant
 
             settings_manager_.setWiFiCredential(1, wifi_manager_.getCurrentNetworkSSID().c_str(), wifi_manager_.getCurrentNetworkPassword().c_str());
 
-            cloud_services::ada_cloud_services_config_t cloud_config;
+            cloud_services::ada_cloud_services_config_t cloud_config = {};
             cloud_config.firmware_version = current_firmware_version_.c_str();
             cloud_config.oem_data = oem_data;
 
@@ -434,13 +453,15 @@ namespace ada_assistant
 
                 ret = cloud_services_.pair_device(user_id_);
                 ESP_ERROR_CHECK(ret);
+
+                break;
             }
 
             cloud_config.pairing_token = settings_manager_.getPairingData().pairingToken;
             esp_err_t ret = cloud_services_.init(app_event_loop_handle_, cloud_config);
             ESP_ERROR_CHECK(ret);
 
-            microphone_.init();
+            microphone_.init(app_event_loop_handle_);
 
             wake_word_engine_.init(app_event_loop_handle_);
             wake_word_engine_.start();
@@ -456,6 +477,10 @@ namespace ada_assistant
             ESP_LOGI(TAG, "Wi-Fi disconnected");
             speaker_driver_.play_mp3_file("/audio/lost_wifi_connection.mp3");
             led_strip_driver_.set_all_leds_to_color(255, 0, 0); // Red
+            led_strip_driver_.start_flashing_effect({.r = 255,
+                                                     .g = 0,
+                                                     .b = 0,
+                                                     .duration_ms = 250});
             break;
         }
         case APP_EVENT_PAIRING_COMPLETED:
@@ -472,7 +497,7 @@ namespace ada_assistant
             speaker_driver_.play_mp3_file("/audio/setup_complete.mp3");
             led_strip_driver_.set_all_leds_to_color(255, 165, 0); // Amber
 
-            ret = microphone_.init();
+            ret = microphone_.init(app_event_loop_handle_);
             ESP_ERROR_CHECK(ret);
 
             ret = wake_word_engine_.init(app_event_loop_handle_);
@@ -486,11 +511,118 @@ namespace ada_assistant
         case APP_EVENT_WAKE_WORD_DETECTED:
         {
             ESP_LOGI(TAG, "Wake word detected");
+
+            speaker_driver_.play_mp3_file("/audio/listening_start.mp3");
+
+            led_strip_driver_.start_flashing_effect({.r = 191,
+                                                     .g = 245,
+                                                     .b = 66,
+                                                     .duration_ms = 500});
+
+            microphone_.start_recording();
             break;
         }
         case APP_EVENT_WAKE_WORD_DETECTION_STOPPED:
         {
             ESP_LOGI(TAG, "Wake word detection stopped");
+            break;
+        }
+        case APP_EVENT_COMMAND_RECORDING_STARTED:
+        {
+            ESP_LOGI(TAG, "Command recording started");
+
+            break;
+        }
+        case APP_EVENT_COMMAND_RECORDING_FINISHED:
+        {
+            ESP_LOGI(TAG, "APP_EVENT_COMMAND_RECORDING_FINISHED event received.");
+
+            led_strip_driver_.stop_current_effect();
+            // set to flashing amber
+            led_strip_driver_.start_flashing_effect({.r = 255,
+                                                     .g = 165,
+                                                     .b = 0,
+                                                     .duration_ms = 500});
+
+            speaker_driver_.play_mp3_file_blocking("/audio/listening_end.mp3");
+
+            if (!event_data)
+            {
+                ESP_LOGE(TAG, "Event data is null for RECORDING_FINISHED. This should not happen.");
+                return;
+            }
+
+            microphone_driver::event_audio_data_t *finished_payload =
+                static_cast<microphone_driver::event_audio_data_t *>(event_data);
+
+            ESP_LOGI(TAG, "Recording finished details:");
+            ESP_LOGI(TAG, "  Buffer Ptr: %p", (void *)finished_payload->buffer_ptr);
+            ESP_LOGI(TAG, "  Bytes Recorded: %zu", finished_payload->bytes_recorded);
+            ESP_LOGI(TAG, "  Buffer Capacity: %zu bytes", finished_payload->buffer_capacity);
+            ESP_LOGI(TAG, "  Sample Rate: %d Hz", finished_payload->sample_rate);
+            ESP_LOGI(TAG, "  Bits Per Sample: %d", finished_payload->bits_per_sample);
+
+            if (finished_payload->buffer_ptr != NULL)
+            {
+                if (finished_payload->bytes_recorded > 0)
+                {
+                    esp_err_t send_status = cloud_services_.sendAudio(
+                        finished_payload->buffer_ptr,
+                        finished_payload->bytes_recorded,
+                        finished_payload->sample_rate,
+                        finished_payload->bits_per_sample);
+
+                    if (send_status == ESP_OK)
+                    {
+                        ESP_LOGI(TAG, "Full recording successfully sent to cloud.");
+                    }
+                    else
+                    {
+                        ESP_LOGE(TAG, "Failed to send full recording to cloud: %s", esp_err_to_name(send_status));
+                        wake_word_engine_.start();
+                    }
+                }
+                else
+                {
+                    ESP_LOGW(TAG, "Recording finished but no bytes were recorded into the buffer.");
+                }
+
+                ESP_LOGI(TAG, "Freeing recording buffer from PSRAM at %p.", (void *)finished_payload->buffer_ptr);
+                heap_caps_free(finished_payload->buffer_ptr);
+                finished_payload->buffer_ptr = NULL; // Good practice, though the payload struct itself is transient.
+            }
+            else
+            {
+                ESP_LOGW(TAG, "RECORDING_FINISHED event received with a NULL buffer pointer. This might indicate an earlier allocation failure or an issue.");
+            }
+            break;
+        }
+        case APP_EVENT_COMMAND_RESPONSE_RECEIVED:
+        {
+            ESP_LOGI(TAG, "Command processing finished event received");
+
+            if (!event_data)
+            {
+                ESP_LOGE(TAG, "Event data is null for COMMAND_PROCESSING_FINISHED. This should not happen.");
+                return;
+            }
+
+            cloud_services::event_command_processing_finished_data_t *finished_payload =
+                static_cast<cloud_services::event_command_processing_finished_data_t *>(event_data);
+
+            ESP_LOGI(TAG, "Command processing finished details:");
+            ESP_LOGI(TAG, "  Is Command: %s", finished_payload->is_playback_start_request ? "true" : "false");
+            ESP_LOGI(TAG, "  Response Path: %s", finished_payload->response_path);
+
+            led_strip_driver_.stop_current_effect();
+            led_strip_driver_.set_all_leds_to_color(0, 255, 0); // Green
+
+            speaker_driver_.play_http_stream_blocking(finished_payload->response_path);
+
+            ESP_LOGI(TAG, "Playback finished for response path: %s", finished_payload->response_path);
+
+            wake_word_engine_.start();
+
             break;
         }
         default:
@@ -553,6 +685,13 @@ namespace ada_assistant
         {
             microphone_.stop();
         }
+
+        if (led_strip_driver_.is_effect_running())
+        {
+            led_strip_driver_.stop_current_effect();
+        }
+
+        led_strip_driver_.clear_led_strip();
 
         ESP_LOGI(TAG, "Component deinitialization complete.");
 

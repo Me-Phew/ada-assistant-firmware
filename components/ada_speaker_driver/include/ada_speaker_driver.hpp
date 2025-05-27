@@ -19,6 +19,7 @@
 #include "periph_button.h"
 #include "board.h"
 #include "esp_spiffs.h"
+#include "http_stream.h"
 
 #include "ada_global_events.hpp"
 
@@ -26,7 +27,7 @@ namespace ada_assistant
 {
     namespace speaker_driver
     {
-        struct ada_microphone_config_t
+        struct ada_speaker_config_t
         {
             i2s_port_t i2s_port;
 
@@ -37,7 +38,7 @@ namespace ada_assistant
         class AdaSpeakerDriver
         {
         public:
-            AdaSpeakerDriver(ada_microphone_config_t config);
+            AdaSpeakerDriver(ada_speaker_config_t config);
             AdaSpeakerDriver();
 
             ~AdaSpeakerDriver();
@@ -51,7 +52,9 @@ namespace ada_assistant
 
             esp_err_t play_mp3_file(std::string file_path);
             esp_err_t play_mp3_file_blocking(std::string file_path);
-            // esp_errt_t play_http_stream(const char *url);
+
+            esp_err_t play_http_stream(const char *url);
+            esp_err_t play_http_stream_blocking(const char *url);
 
             esp_err_t pause();
             esp_err_t stop();
@@ -68,12 +71,15 @@ namespace ada_assistant
 
             audio_element_handle_t i2s_stream_writer_;
             audio_element_handle_t mp3_decoder_;
+            audio_element_handle_t http_stream_reader_;
             audio_board_handle_t board_handle_;
             audio_pipeline_handle_t pipeline_;
             audio_event_iface_handle_t iface_handle_;
 
             static void audio_pipeline_task(void *pvParameters);
             TaskHandle_t pipeline_task_handle;
+
+            esp_err_t _reset_and_clear_pipeline();
 
             i2s_port_t i2s_port;
 

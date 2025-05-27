@@ -3,5 +3,5 @@
 nvs,      data, nvs,       ,      0x6000,
 phy_init, data, phy,       ,      0x1000,
 oem_data,    data, 0x40,      ,      0x1000,
-factory,  app,  factory,   ,      2500k
+factory,  app,  factory,   ,      3000k
 audio,    data, spiffs,    ,      4M,

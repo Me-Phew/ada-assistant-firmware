@@ -24,7 +24,7 @@ menu "Ada LED Strip Driver"
 
     config ADA_LED_STRIP_STRIP_LED_COUNT
         int "Number of LEDs"
-        default 14
+        default 8
         help
             Number of LEDs in the strip.
             This is used to allocate memory for the LED strip driver.

@@ -604,88 +604,37 @@ namespace ada_assistant
                 ESP_LOGE(TAG, "Speaker driver not initialized");
                 return ESP_ERR_INVALID_STATE;
             }
-            if (!pipeline_ || !mp3_decoder_ || !i2s_stream_writer_)
+
+            // Stop current playback if running
+            if (playing)
             {
-                ESP_LOGE(TAG, "Core audio elements not initialized for MP3 file playback");
-                return ESP_ERR_INVALID_STATE;
+                stop();
             }
 
-            // 1. Reset the pipeline to a clean state.
-            esp_err_t ret = _reset_and_clear_pipeline();
+            // Load file into memory
+            esp_err_t ret = load_file_to_memory(file_path);
             if (ret != ESP_OK)
             {
-                ESP_LOGE(TAG, "_reset_and_clear_pipeline failed: %s. Cannot play MP3.", esp_err_to_name(ret));
-                // If pipeline is unusable, further operations will likely fail.
                 return ret;
             }
 
-            // 2. Load the new MP3 file into memory.
-            ret = load_file_to_memory(file_path);
-            if (ret != ESP_OK)
-            {
-                ESP_LOGE(TAG, "Failed to load file %s to memory: %s", file_path.c_str(), esp_err_to_name(ret));
-                // free_file_buffer() is called by load_file_to_memory on failure or by _reset_and_clear_pipeline
-                return ret;
-            }
-
-            ESP_LOGI(TAG, "Configuring pipeline for MP3 file playback: %s", file_path.c_str());
-
-            // 3. Re-configure mp3_decoder_ to use the file_read_callback.
-            ret = audio_element_set_read_cb(mp3_decoder_, file_read_callback, this);
-            if (ret != ESP_OK)
-            {
-                ESP_LOGE(TAG, "Failed to set read_cb for mp3_decoder_: %s", esp_err_to_name(ret));
-                free_file_buffer(); // Clean up the newly loaded file
-                return ret;
-            }
-
-            // 4. Re-register elements for local file playback.
-            ret = audio_pipeline_register(pipeline_, mp3_decoder_, "mp3");
-            if (ret != ESP_OK)
-            {
-                ESP_LOGE(TAG, "Failed to register mp3_decoder_: %s", esp_err_to_name(ret));
-                free_file_buffer();
-                return ret;
-            }
-            ret = audio_pipeline_register(pipeline_, i2s_stream_writer_, "i2s");
-            if (ret != ESP_OK)
-            {
-                ESP_LOGE(TAG, "Failed to register i2s_stream_writer_: %s", esp_err_to_name(ret));
-                audio_pipeline_unregister(pipeline_, mp3_decoder_);
-                free_file_buffer();
-                return ret;
-            }
-
-            // 5. Re-link elements: mp3_decoder -> i2s_stream_writer_
-            const char *link_tag[2] = {"mp3", "i2s"};
-            ret = audio_pipeline_link(pipeline_, &link_tag[0], 2);
-            if (ret != ESP_OK)
-            {
-                ESP_LOGE(TAG, "Failed to link elements for MP3 file playback: %s", esp_err_to_name(ret));
-                audio_pipeline_unregister(pipeline_, mp3_decoder_);
-                audio_pipeline_unregister(pipeline_, i2s_stream_writer_);
-                free_file_buffer();
-                return ret;
-            }
-
-            // 6. Reset ringbuffers and elements states before running.
+            // Reset and start the pipeline
+            audio_pipeline_stop(pipeline_);
+            audio_pipeline_wait_for_stop(pipeline_);
             audio_pipeline_reset_ringbuffer(pipeline_);
-            audio_pipeline_reset_elements(pipeline_); // This should set elements to AEL_STATE_INIT
+            audio_pipeline_reset_elements(pipeline_);
+            audio_pipeline_change_state(pipeline_, AEL_STATE_INIT);
 
-            // 7. Start the pipeline.
-            ESP_LOGI(TAG, "Starting pipeline for MP3 file: %s", file_path.c_str());
             ret = audio_pipeline_run(pipeline_);
             if (ret == ESP_OK)
             {
                 playing = true;
-                ESP_LOGI(TAG, "Pipeline started successfully for MP3 file: %s", file_path.c_str());
-                // Event posting code (commented out in original)
+                ESP_LOGI(TAG, "Started playing: %s", file_path.c_str());
             }
             else
             {
-                ESP_LOGE(TAG, "Failed to start pipeline for MP3 file: %s (%s)", file_path.c_str(), esp_err_to_name(ret));
-                free_file_buffer(); // Clean up if run fails
-                playing = false;
+                ESP_LOGE(TAG, "Failed to start pipeline: %s", esp_err_to_name(ret));
+                free_file_buffer();
             }
 
             return ret;
@@ -702,41 +651,36 @@ namespace ada_assistant
             }
 
             // Wait for playback to complete
-            // The `playing` flag is managed by file_read_callback (AEL_IO_DONE)
-            // and by the pipeline event task (AEL_MSG_CMD_REPORT_STATUS for FINISHED/ERROR)
-            ESP_LOGI(TAG, "Waiting for MP3 file playback to finish...");
-            while (playing && initialized) // Check initialized in case deinit is called externally
+            audio_event_iface_msg_t msg;
+            while (playing)
             {
-                // The audio_pipeline_task listens for events and updates `playing` status.
-                // We just need to poll the `playing` flag here.
-                // A direct listen on iface_handle_ here would conflict with audio_pipeline_task.
-                vTaskDelay(pdMS_TO_TICKS(100)); // Check every 100ms
+                ret = audio_event_iface_listen(iface_handle_, &msg, 1000 / portTICK_PERIOD_MS);
+                if (ret != ESP_OK)
+                {
+                    continue;
+                }
+
+                // Check for end of stream or error
+                if (msg.source_type == AUDIO_ELEMENT_TYPE_ELEMENT)
+                {
+                    if (msg.source == (void *)mp3_decoder_)
+                    {
+                        if (msg.cmd == AEL_MSG_CMD_REPORT_STATUS)
+                        {
+                            audio_element_state_t el_state = audio_element_get_state(mp3_decoder_);
+                            if (el_state == AEL_STATE_FINISHED || el_state == AEL_STATE_ERROR)
+                            {
+                                ESP_LOGI(TAG, "Playback finished");
+                                playing = false;
+                                break;
+                            }
+                        }
+                    }
+                }
             }
 
-            if (!initialized)
-            {
-                ESP_LOGW(TAG, "Player deinitialized during blocking playback.");
-                return ESP_ERR_INVALID_STATE;
-            }
-
-            ESP_LOGI(TAG, "MP3 file playback finished or stopped: %s", file_path.c_str());
-
-            // Pipeline should be stopped by internal events or if an error occurred.
-            // Call stop() to ensure pipeline is stopped and buffer is freed if not already.
-            // This provides a consistent state after blocking playback.
-            // However, if playback finished normally, free_file_buffer was already called
-            // by file_read_callback returning AEL_IO_DONE which eventually stops the pipeline elements.
-            // Or it's handled by the next call to _reset_and_clear_pipeline.
-            // For now, rely on the `playing` flag and the next operation to clean up.
-            // `free_file_buffer()` is called by `_reset_and_clear_pipeline` or next `load_file_to_memory`.
-            // If the user calls stop() explicitly after this, it's also fine.
-            // Let's ensure buffer is freed if playback stopped due to reasons other than explicit stop() or new play().
-            if (!file_loaded_ && file_buffer_ != nullptr)
-            { // If file_loaded is false but buffer exists (e.g. partial load error)
-                free_file_buffer();
-            }
-            // If `playing` became false due to EOF, `file_read_callback` set it.
-            // The buffer will be freed by the next `play_` call or `stop`.
+            // Clean up
+            free_file_buffer();
 
             return ESP_OK;
         }

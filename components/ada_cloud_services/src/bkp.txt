@@ -113,7 +113,11 @@ namespace ada_assistant
                                                http_client_(nullptr),
                                                // Initialize new members
                                                current_http_response_body_(""),
-                                               accumulated_event_error_(ESP_OK)
+                                               accumulated_event_error_(ESP_OK),
+                                               is_sending_(false),
+                                               boundary_(""),
+                                               connection_established_(false),
+                                               retry_count_(0)
         {
             ESP_LOGI(TAG, "Cloud services constructor called.");
         }
@@ -183,8 +187,8 @@ namespace ada_assistant
             // ESP_LOGI(TAG, "Stack size: %d bytes", uxTaskGetStackHighWaterMark(NULL)); // uxTaskGetStackHighWaterMark(NULL) gets current task's HWM
             ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
 
-            esp_http_client_config_t client_config = {};     // Initialize all fields to zero/null
-            client_config.timeout_ms = response_timeout_ms_; // Set a default timeout for HTTP requests
+            esp_http_client_config_t client_config = {}; // Initialize all fields to zero/null
+            client_config.timeout_ms = 15000;
             // client_config.crt_bundle_attach = esp_crt_bundle_attach; // TODO HTTPS: Enable for HTTPS
 
             std::string user_agent_str = "AdaAssistantClient/" + firmware_version_;
@@ -436,51 +440,43 @@ namespace ada_assistant
             return ESP_OK;
         }
 
-        std::string AdaCloudServices::generate_form_boundary()
+        esp_err_t AdaCloudServices::start_sending_audio()
         {
-            char random_suffix[17]; // 16 hex chars + null terminator
-            uint32_t r1 = esp_random();
-            uint32_t r2 = esp_random();
-            uint32_t r3 = esp_random();
-            uint32_t r4 = esp_random();
-            snprintf(random_suffix, sizeof(random_suffix), "%04x%04x%04x%04x",
-                     (uint16_t)(r1 & 0xFFFF), (uint16_t)(r2 & 0xFFFF),
-                     (uint16_t)(r3 & 0xFFFF), (uint16_t)(r4 & 0xFFFF));
-            return "----AdaFormBoundary" + std::string(random_suffix);
-        }
-
-        esp_err_t AdaCloudServices::sendAudio(const int16_t *audio_data, size_t audio_data_bytes, int sample_rate, int bits_per_sample)
-        {
-            ESP_LOGI(TAG, "Attempting to send complete audio recording.");
-
-            if (http_client_ == nullptr)
+            if (is_sending_)
             {
-                ESP_LOGE(TAG, "HTTP client is not initialized. Cannot send audio.");
+                ESP_LOGE(TAG, "Audio sending already in progress.");
                 return ESP_ERR_INVALID_STATE;
             }
+
+            if (!http_client_)
+            {
+                ESP_LOGE(TAG, "HTTP client is not initialized.");
+                return ESP_ERR_INVALID_STATE;
+            }
+
             if (pairing_token_.empty())
             {
-                ESP_LOGE(TAG, "Pairing token is missing. Device must be paired to send audio.");
-                return ESP_ERR_INVALID_STATE; // Or a more specific error like ESP_ERR_NOT_FOUND
-            }
-            if (cloud_server_url_.empty())
-            {
-                ESP_LOGE(TAG, "Cloud server URL is not configured.");
+                ESP_LOGE(TAG, "Pairing key not set. Call set_pairing_key() first.");
                 return ESP_ERR_INVALID_STATE;
             }
-            if (audio_data == nullptr || audio_data_bytes == 0)
-            {
-                ESP_LOGE(TAG, "Audio data is null or empty.");
-                return ESP_ERR_INVALID_ARG;
-            }
 
-            // Reset state for this request
+            // Reset state
             current_http_response_body_.clear();
             accumulated_event_error_ = ESP_OK;
+            audio_buffer_.clear();
+            audio_buffer_.reserve(160000); // Reserve space for ~10 seconds of audio at 16kHz
 
-            std::string endpoint_path = "api/devices/ada"; // As per curl command
+            is_sending_ = true;
+            ESP_LOGI(TAG, "Started audio accumulation for upload");
+            return ESP_OK;
+        }
+
+        esp_err_t AdaCloudServices::establish_connection()
+        {
+            std::string endpoint_path = "api/devices/ada";
             std::string full_url;
 
+            // Robust URL construction
             std::string base_url_temp = cloud_server_url_;
             if (!base_url_temp.empty() && base_url_temp.back() == '/')
             {
@@ -495,225 +491,299 @@ namespace ada_assistant
                 full_url = base_url_temp + "/" + endpoint_path;
             }
 
-            ESP_LOGI(TAG, "Sending audio to URL: %s", full_url.c_str());
+            ESP_LOGI(TAG, "Starting audio upload to: %s (attempt %d)", full_url.c_str(), retry_count_ + 1);
 
-            std::string boundary = generate_form_boundary();
-            std::string auth_header_value = "PairingKey " + pairing_token_;
-            std::string content_type_header_value = "multipart/form-data; boundary=" + boundary;
+            esp_err_t err;
 
-            // Construct the multipart body parts
-            // Part 1: Headers for the audio form field
-            std::string part1_header;
-            part1_header.reserve(256); // Pre-allocate to reduce reallocations
-            part1_header = "--" + boundary + "\r\n";
-            part1_header += "Content-Disposition: form-data; name=\"audio\"; filename=\"audio.raw\"\r\n"; // Using .raw as it's raw PCM
+            // Close any existing connection first
+            esp_http_client_close(http_client_);
 
-            // Determine Content-Type for the audio part based on sample_rate and bits_per_sample
-            // Example: audio/L16;rate=16000;channels=1 (assuming mono)
-            if (bits_per_sample == 16)
+            // Configure the HTTP client
+            err = esp_http_client_set_url(http_client_, full_url.c_str());
+            if (err != ESP_OK)
             {
-                part1_header += "Content-Type: audio/L16;rate=" + std::to_string(sample_rate) + ";channels=1\r\n";
+                ESP_LOGE(TAG, "Failed to set URL: %s", esp_err_to_name(err));
+                return err;
             }
-            else if (bits_per_sample == 8)
+
+            err = esp_http_client_set_method(http_client_, HTTP_METHOD_POST);
+            if (err != ESP_OK)
             {
-                part1_header += "Content-Type: audio/L8;rate=" + std::to_string(sample_rate) + ";channels=1\r\n";
+                ESP_LOGE(TAG, "Failed to set HTTP method: %s", esp_err_to_name(err));
+                return err;
             }
-            else
-            {
-                // Fallback if format is unknown or not 8/16 bit
-                part1_header += "Content-Type: application/octet-stream\r\n";
-            }
-            part1_header += "\r\n"; // End of headers for this part
 
-            // Part 3: Final boundary
-            std::string final_boundary_part = "\r\n--" + boundary + "--\r\n";
+            // Set timeout for connection and data transfer
+            esp_http_client_set_timeout_ms(http_client_, CHUNK_TIMEOUT_MS);
 
-            // Calculate total content length for the POST request
-            size_t total_content_length = part1_header.length() + audio_data_bytes + final_boundary_part.length();
+            // For audio streaming, consider using simple binary upload instead of multipart
+            // This is more reliable for continuous streaming
+            esp_http_client_set_header(http_client_, "Content-Type", "audio/wav");
+            esp_http_client_set_header(http_client_, "Transfer-Encoding", "chunked");
+            esp_http_client_set_header(http_client_, "Accept", "application/json");
+            esp_http_client_set_header(http_client_, "Connection", "keep-alive");
 
-            esp_err_t err = ESP_OK;
+            // Add custom headers to help server understand this is streaming audio
+            esp_http_client_set_header(http_client_, "X-Audio-Stream", "true");
+            esp_http_client_set_header(http_client_, "X-Device-Type", "ESP32");
 
-            // Configure HTTP client for this specific request
-            esp_http_client_set_url(http_client_, full_url.c_str());
-            esp_http_client_set_method(http_client_, HTTP_METHOD_POST);
-            esp_http_client_set_header(http_client_, "Authorization", auth_header_value.c_str());
-            esp_http_client_set_header(http_client_, "Content-Type", content_type_header_value.c_str());
-            esp_http_client_set_header(http_client_, "Connection", "keep-alive"); // Or "close" if not reusing
-
-            // Open the connection with the total length of the body
-            err = esp_http_client_open(http_client_, total_content_length);
+            // Open the connection with chunked transfer
+            err = esp_http_client_open(http_client_, 0);
             if (err != ESP_OK)
             {
                 ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
-                // No need to call close if open failed.
                 return err;
             }
 
-            // Write the first part (multipart headers for audio field)
-            int bytes_written = esp_http_client_write(http_client_, part1_header.c_str(), part1_header.length());
-            if (bytes_written < 0)
+            connection_established_ = true;
+            is_sending_ = true;
+            ESP_LOGI(TAG, "Audio streaming connection established successfully");
+            return ESP_OK;
+        }
+
+        esp_err_t AdaCloudServices::send_audio_chunk(const uint8_t *audio_data, size_t data_size)
+        {
+            if (!is_sending_)
             {
-                ESP_LOGE(TAG, "Failed to write multipart header");
-                err = ESP_FAIL; // Or extract more specific error
-            }
-            else if ((size_t)bytes_written != part1_header.length())
-            {
-                ESP_LOGE(TAG, "Incomplete write for multipart header. Wrote %d of %zu bytes.", bytes_written, part1_header.length());
-                err = ESP_FAIL;
+                ESP_LOGE(TAG, "Not in sending state. Call start_sending_audio first.");
+                return ESP_ERR_INVALID_STATE;
             }
 
-            // Write the audio data itself
-            if (err == ESP_OK)
+            if (data_size == 0)
             {
-                bytes_written = esp_http_client_write(http_client_, reinterpret_cast<const char *>(audio_data), audio_data_bytes);
-                if (bytes_written < 0)
-                {
-                    ESP_LOGE(TAG, "Failed to write audio data");
-                    err = ESP_FAIL;
-                }
-                else if ((size_t)bytes_written != audio_data_bytes)
-                {
-                    ESP_LOGE(TAG, "Incomplete write for audio data. Wrote %d of %zu bytes.", bytes_written, audio_data_bytes);
-                    err = ESP_FAIL;
-                }
+                ESP_LOGW(TAG, "send_audio_chunk called with zero data size.");
+                return ESP_OK;
             }
 
-            // Write the final boundary part
-            if (err == ESP_OK)
-            {
-                bytes_written = esp_http_client_write(http_client_, final_boundary_part.c_str(), final_boundary_part.length());
-                if (bytes_written < 0)
-                {
-                    ESP_LOGE(TAG, "Failed to write final boundary");
-                    err = ESP_FAIL;
-                }
-                else if ((size_t)bytes_written != final_boundary_part.length())
-                {
-                    ESP_LOGE(TAG, "Incomplete write for final boundary. Wrote %d of %zu bytes.", bytes_written, final_boundary_part.length());
-                    err = ESP_FAIL;
-                }
-            }
+            // Add data to buffer
+            size_t old_size = audio_buffer_.size();
+            audio_buffer_.resize(old_size + data_size);
+            memcpy(audio_buffer_.data() + old_size, audio_data, data_size);
 
-            // Fetch headers to get the response status (this can also trigger ON_HEADER events)
-            if (err == ESP_OK)
+            ESP_LOGD(TAG, "Accumulated audio chunk: %d bytes (total: %d bytes)",
+                     (int)data_size, (int)audio_buffer_.size());
+            return ESP_OK;
+        }
+
+        esp_err_t AdaCloudServices::send_audio_chunk_with_retries(const uint8_t *audio_data, size_t data_size)
+        {
+            int attempt = 0;
+
+            while (attempt < MAX_RETRY_ATTEMPTS)
             {
-                int content_length_resp = esp_http_client_fetch_headers(http_client_);
-                if (content_length_resp < 0)
+                // Check if connection is still alive
+                if (!connection_established_ || !is_connection_alive())
                 {
-                    ESP_LOGE(TAG, "HTTP fetch headers failed");
-                    err = ESP_FAIL;
+                    ESP_LOGW(TAG, "Connection lost, attempting to re-establish...");
+
+                    esp_err_t reconnect_result = establish_connection();
+                    if (reconnect_result != ESP_OK)
+                    {
+                        attempt++;
+                        if (attempt < MAX_RETRY_ATTEMPTS)
+                        {
+                            ESP_LOGW(TAG, "Reconnection failed, retrying in 1 second... (attempt %d/%d)",
+                                     attempt + 1, MAX_RETRY_ATTEMPTS);
+                            vTaskDelay(pdMS_TO_TICKS(1000));
+                            continue;
+                        }
+                        else
+                        {
+                            ESP_LOGE(TAG, "Max retry attempts reached, giving up");
+                            is_sending_ = false;
+                            return ESP_FAIL;
+                        }
+                    }
+                }
+
+                // Try to send the chunk
+                int bytes_written = esp_http_client_write(http_client_, (const char *)audio_data, data_size);
+
+                if (bytes_written == data_size)
+                {
+                    // Success!
+                    retry_count_ = 0; // Reset retry count on success
+                    return ESP_OK;
+                }
+                else if (bytes_written < 0)
+                {
+                    ESP_LOGE(TAG, "Failed to write audio chunk (errno %d), attempt %d/%d",
+                             errno, attempt + 1, MAX_RETRY_ATTEMPTS);
+                    connection_established_ = false;
+                    attempt++;
+
+                    if (attempt < MAX_RETRY_ATTEMPTS)
+                    {
+                        vTaskDelay(pdMS_TO_TICKS(500)); // Short delay before retry
+                    }
                 }
                 else
                 {
-                    ESP_LOGD(TAG, "HTTP response content_length from fetch_headers: %d", content_length_resp);
-                    // The HTTP_EVENT_ON_DATA in the event handler will read the body.
-                    // We just need to ensure the client processes the response.
-                    // A simple way to ensure all data is processed is to try to read it,
-                    // but our event handler already does this by accumulating current_http_response_body_.
-                    // We can perform a dummy read of 0 bytes to trigger event processing if necessary,
-                    // or simply rely on esp_http_client_close() to finalize everything.
-                    // For robustness, a small read loop after fetch_headers can ensure events are processed.
-                    char dummy_buf[1];
-                    while (esp_http_client_read(http_client_, dummy_buf, 0) > 0)
-                        ; // Read 0 bytes to pump events if needed
+                    ESP_LOGE(TAG, "Partial write: %d of %d bytes, attempt %d/%d",
+                             bytes_written, (int)data_size, attempt + 1, MAX_RETRY_ATTEMPTS);
+                    connection_established_ = false;
+                    attempt++;
                 }
             }
 
-            // Check for errors accumulated in the event handler during the request processing
-            if (err == ESP_OK && accumulated_event_error_ != ESP_OK)
+            ESP_LOGE(TAG, "Failed to send audio chunk after %d attempts", MAX_RETRY_ATTEMPTS);
+            is_sending_ = false;
+            esp_http_client_close(http_client_);
+            return ESP_FAIL;
+        }
+
+        esp_err_t AdaCloudServices::stop_sending_audio()
+        {
+            if (!is_sending_)
             {
-                ESP_LOGE(TAG, "Error occurred during HTTP event processing for audio send: %s", esp_err_to_name(accumulated_event_error_));
-                err = accumulated_event_error_;
+                ESP_LOGE(TAG, "Not in sending state. Nothing to stop.");
+                return ESP_OK;
             }
 
-            int status_code = esp_http_client_get_status_code(http_client_);
-            ESP_LOGI(TAG, "Audio send HTTP Status = %d", status_code);
-
-            // Close the connection (this will also trigger ON_FINISH, DISCONNECTED events)
-            esp_err_t close_err = esp_http_client_close(http_client_);
-            if (close_err != ESP_OK)
+            if (!http_client_)
             {
-                ESP_LOGE(TAG, "Failed to close HTTP connection: %s", esp_err_to_name(close_err));
-                if (err == ESP_OK)
-                    err = close_err; // Report close error if no other error occurred
+                ESP_LOGE(TAG, "HTTP client is not initialized.");
+                return ESP_ERR_INVALID_STATE;
             }
 
-            if (err != ESP_OK)
+            if (audio_buffer_.empty())
             {
-                ESP_LOGE(TAG, "Audio send overall failed. Error: %s", esp_err_to_name(err));
-                return err;
+                ESP_LOGW(TAG, "No audio data to send.");
+                is_sending_ = false;
+                return ESP_OK;
             }
 
-            if (status_code >= 200 && status_code < 300)
+            ESP_LOGI(TAG, "Uploading %d bytes of audio data", (int)audio_buffer_.size());
+
+            esp_err_t result = upload_multipart_audio();
+
+            // Cleanup
+            audio_buffer_.clear();
+            is_sending_ = false;
+
+            return result;
+        }
+
+        esp_err_t AdaCloudServices::upload_multipart_audio()
+        {
+            // Construct URL
+            std::string endpoint_path = "api/devices/ada";
+            std::string full_url;
+            std::string base_url_temp = cloud_server_url_;
+
+            if (!base_url_temp.empty() && base_url_temp.back() == '/')
             {
-                ESP_LOGI(TAG, "Audio sent successfully.");
-                ESP_LOGI(TAG, "Server response for audio send: %s", current_http_response_body_.c_str());
-
-                ESP_LOGI(TAG, "Response body raw: %s", current_http_response_body_.c_str());
-
-                // Parse the response JSON from current_http_response_body_
-                cJSON *response_json = cJSON_Parse(current_http_response_body_.c_str());
-                if (!response_json)
-                {
-                    ESP_LOGE(TAG, "Failed to parse response JSON. Body: %s", current_http_response_body_.c_str());
-                    return ESP_FAIL; // Or ESP_ERR_INVALID_RESPONSE
-                }
-
-                cJSON *is_playback_start_request_json = cJSON_GetObjectItem(response_json, "isPlaybackStartRequest");
-                if (!cJSON_IsBool(is_playback_start_request_json))
-                {
-                    ESP_LOGE(TAG, "Failed to get 'isPlaybackStartRequest' string from response JSON.");
-                    cJSON_Delete(response_json);
-                    return ESP_FAIL; // Or ESP_ERR_INVALID_RESPONSE
-                }
-
-                cJSON *response_path_json = cJSON_GetObjectItem(response_json, "responsePath");
-                if (!cJSON_IsString(response_path_json) || (response_path_json->valuestring == NULL))
-                {
-                    ESP_LOGE(TAG, "Failed to get 'responsePath' string from response JSON.");
-                    cJSON_Delete(response_json);
-                    return ESP_FAIL; // Or ESP_ERR_INVALID_RESPONSE
-                }
-
-                std::string responseUrl = cloud_server_url_ + response_path_json->valuestring;
-                ESP_LOGI(TAG, "Response URL: %s", responseUrl.c_str());
-
-                event_command_processing_finished_data_t event_data;
-                event_data.is_playback_start_request = cJSON_IsTrue(is_playback_start_request_json);
-                strncpy(event_data.response_path, responseUrl.c_str(), sizeof(event_data.response_path) - 1);
-                event_data.response_path[sizeof(event_data.response_path) - 1] = '\0'; // Ensure null termination
-                cJSON_Delete(response_json);                                           // Free cJSON structure for response
-
-                // Post event about audio processing completion
-                esp_err_t post_ret = esp_event_post_to(app_event_loop_handle_,
-                                                       ADA_APP_EVENT_BASE,
-                                                       APP_EVENT_COMMAND_RESPONSE_RECEIVED,
-                                                       &event_data,
-                                                       sizeof(event_data),
-                                                       portMAX_DELAY);
-
-                if (post_ret != ESP_OK)
-                {
-                    ESP_LOGE(TAG, "Failed to post command processing finished event: %s", esp_err_to_name(post_ret));
-                    // Continue, as audio send itself was successful. The event post failure is a separate issue.
-                }
-                else
-                {
-                    ESP_LOGI(TAG, "Command processing finished event posted successfully.");
-                }
+                base_url_temp.pop_back();
+            }
+            if (!endpoint_path.empty() && endpoint_path.front() == '/')
+            {
+                full_url = base_url_temp + endpoint_path;
             }
             else
             {
-                ESP_LOGE(TAG, "Audio send failed. Server responded with HTTP status %d", status_code);
-                if (!current_http_response_body_.empty())
-                {
-                    ESP_LOGE(TAG, "Server error response: %s", current_http_response_body_.c_str());
-                }
-                // Map HTTP status codes to specific esp_err_t values if needed
-                return ESP_FAIL;
+                full_url = base_url_temp + "/" + endpoint_path;
             }
 
-            return ESP_OK;
+            ESP_LOGI(TAG, "Uploading audio to: %s", full_url.c_str());
+
+            // Generate boundary
+            boundary_ = "ESP32Boundary" + std::to_string(esp_random());
+
+            // Build multipart body
+            std::string multipart_body = build_multipart_body();
+
+            esp_err_t err;
+
+            // Configure HTTP client
+            err = esp_http_client_set_url(http_client_, full_url.c_str());
+            if (err != ESP_OK)
+            {
+                ESP_LOGE(TAG, "Failed to set URL: %s", esp_err_to_name(err));
+                return err;
+            }
+
+            err = esp_http_client_set_method(http_client_, HTTP_METHOD_POST);
+            if (err != ESP_OK)
+            {
+                ESP_LOGE(TAG, "Failed to set HTTP method: %s", esp_err_to_name(err));
+                return err;
+            }
+
+            // Set headers - NO chunked encoding, just regular POST with Content-Length
+            std::string content_type_header = "multipart/form-data; boundary=" + boundary_;
+            esp_http_client_set_header(http_client_, "Content-Type", content_type_header.c_str());
+
+            // CRITICAL: Add the Authorization header that was missing!
+            std::string auth_header = "PairingKey " + pairing_token_;
+            esp_http_client_set_header(http_client_, "Authorization", auth_header.c_str());
+
+            esp_http_client_set_header(http_client_, "Accept", "application/json");
+            esp_http_client_set_header(http_client_, "Connection", "close"); // Use close instead of keep-alive for reliability
+
+            // Set timeout
+            esp_http_client_set_timeout_ms(http_client_, 15000);
+
+            // Set content length for the entire multipart body
+            esp_http_client_set_post_field(http_client_, multipart_body.c_str(), multipart_body.length());
+
+            ESP_LOGI(TAG, "Sending multipart request (%d bytes total)", (int)multipart_body.length());
+
+            // Perform the request (this sends everything at once)
+            err = esp_http_client_perform(http_client_);
+            if (err != ESP_OK)
+            {
+                ESP_LOGE(TAG, "HTTP POST request failed: %s", esp_err_to_name(err));
+                return err;
+            }
+
+            // Check response
+            int status_code = esp_http_client_get_status_code(http_client_);
+            int content_length = esp_http_client_get_content_length(http_client_);
+
+            ESP_LOGI(TAG, "HTTP Status: %d, Content-Length: %d", status_code, content_length);
+
+            if (status_code >= 200 && status_code < 300)
+            {
+                ESP_LOGI(TAG, "Audio upload successful!");
+
+                // Log response if available
+                if (!current_http_response_body_.empty())
+                {
+                    ESP_LOGI(TAG, "Server response: %s", current_http_response_body_.c_str());
+                }
+
+                return ESP_OK;
+            }
+            else
+            {
+                ESP_LOGE(TAG, "Audio upload failed with HTTP status: %d", status_code);
+                if (!current_http_response_body_.empty())
+                {
+                    ESP_LOGE(TAG, "Error response: %s", current_http_response_body_.c_str());
+                }
+                return ESP_FAIL;
+            }
+        }
+
+        std::string AdaCloudServices::build_multipart_body()
+        {
+            std::string body;
+
+            // Start boundary
+            body += "--" + boundary_ + "\r\n";
+
+            // Content-Disposition header for the audio field
+            body += "Content-Disposition: form-data; name=\"audio\"; filename=\"recording.wav\"\r\n";
+            body += "Content-Type: audio/wav\r\n";
+            body += "\r\n";
+
+            // Add binary audio data
+            body.append(reinterpret_cast<const char *>(audio_buffer_.data()), audio_buffer_.size());
+
+            // End boundary
+            body += "\r\n--" + boundary_ + "--\r\n";
+
+            return body;
         }
 
         esp_err_t AdaCloudServices::connect_to_gateway()

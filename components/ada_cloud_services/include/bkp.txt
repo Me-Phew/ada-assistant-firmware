@@ -28,12 +28,6 @@ namespace ada_assistant
             std::string pairing_token;
         } ada_cloud_services_config_t;
 
-        typedef struct
-        {
-            bool is_playback_start_request;
-            char response_path[256];
-        } event_command_processing_finished_data_t;
-
         class AdaCloudServices
         {
         public:
@@ -50,7 +44,9 @@ namespace ada_assistant
 
             std::string getPairingToken() const;
 
-            esp_err_t sendAudio(const int16_t *audio_data, size_t audio_data_bytes, int sample_rate, int bits_per_sample);
+            esp_err_t start_sending_audio();
+            esp_err_t send_audio_chunk(const uint8_t *audio_data, size_t data_size);
+            esp_err_t stop_sending_audio();
 
         private:
             esp_event_loop_handle_t app_event_loop_handle_;
@@ -75,13 +71,38 @@ namespace ada_assistant
             // header: static const size_t MAX_HTTP_RESPONSE_BODY_SIZE_BYTES;
             // cpp: const size_t AdaCloudServices::MAX_HTTP_RESPONSE_BODY_SIZE_BYTES = 10 * 1024;
             static const size_t MAX_HTTP_RESPONSE_BODY_SIZE_BYTES = 10 * 1024; // 10KB example
-            static const size_t response_timeout_ms_ = 90000;
 
             // --- Static event handler declaration ---
             static esp_err_t http_event_handler_static(esp_http_client_event_t *evt);
             // --- End static event handler declaration ---
 
-            static std::string generate_form_boundary();
+            bool is_sending_;
+            std::string boundary_;
+
+            static const int MAX_RETRY_ATTEMPTS = 3;
+            static const int CHUNK_TIMEOUT_MS = 10000;
+
+            bool connection_established_;
+            int retry_count_ = 0;
+
+            esp_err_t establish_connection();
+
+            esp_err_t send_audio_chunk_with_retries(const uint8_t *audio_data, size_t data_size);
+
+            bool is_connection_alive()
+            {
+
+                if (!http_client_)
+                    return false;
+
+                return connection_established_;
+            }
+
+            esp_err_t upload_multipart_audio();
+
+            std::string build_multipart_body();
+
+            std::vector<uint8_t> audio_buffer_;
         };
 
     } // namespace cloud_services
