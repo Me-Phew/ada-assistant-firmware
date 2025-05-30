@@ -1,0 +1,28 @@
+menu "Ada Audio Board"
+
+    config ADA_SPEAKER_DRIVER_LRCLK_GPIO
+    int "LRCLK GPIO number"
+    range 0 48
+    default 21
+    help
+        GPIO number (IOxx) the LRCLK amplifier pin is connected to.
+        Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used.
+
+    config ADA_SPEAKER_DRIVER_DIN_GPIO
+        int "DIN GPIO number"
+        range 0 48
+        default 47
+        help
+            GPIO number (IOxx) the DIN amplifier pin is connected to.
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used.
+
+    config ADA_SPEAKER_DRIVER_BCLK_GPIO
+        int "BCLK GPIO number"
+        range 0 48
+        default 48
+        help
+            GPIO number (IOxx) the BCLK amplifier pin is connected to.
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used.
+
+endmenu
+

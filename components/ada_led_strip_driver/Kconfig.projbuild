@@ -1,4 +1,4 @@
-menu "Ada LED Strip"
+menu "Ada LED Strip Driver"
 
     choice ADA_LED_STRIP_BACKEND
         prompt "LED strip backend peripheral"
@@ -14,19 +14,19 @@ menu "Ada LED Strip"
             bool "SPI"
     endchoice
 
-    config ADA_LED_STRIP_GPIO
+    config ADA_LED_STRIP_GPIO_NUM
         int "GPIO number"
-        range 0 46
-        default 5
+        range 0 48
+        default 11
         help
             GPIO number (IOxx) the LED strip is connected to.
             Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used.
 
-    config ADA_LED_STRIP_MAX_LEDS
-        int "Maximum number of LEDs"
-        default 14
+    config ADA_LED_STRIP_STRIP_LED_COUNT
+        int "Number of LEDs"
+        default 8
         help
-            Maximum number of LEDs in the strip.
+            Number of LEDs in the strip.
             This is used to allocate memory for the LED strip driver.
             The actual number of LEDs in the strip may be less than this value.
 

@@ -1,0 +1,42 @@
+menu "Ada Application"
+
+        config ADA_APP_EN_BTN_GPIO
+        int "Enable button GPIO number"
+        range 0 48
+        default 15
+        help
+            GPIO number (IOxx) the soft enable button used to enable the device is connected to.
+            This has to be an RTC capable pin.
+
+        config ADA_APP_EN_BTN_ACTIVE_LEVEL
+        int "Enable button active level"
+        range 0 1
+        default 0
+        help
+            Active level of the enable button. 0 = low, 1 = high.
+            Default is 0 for a pull-up configuration.
+
+        config ADA_APP_EN_BTN_DEBOUNCE_TIME_MS
+        int "Enable button debounce time (ms)"
+        range 0 1000
+        default 50
+        help
+            Debounce time in milliseconds for the enable button.
+            Default is 50ms.
+
+        config ADA_APP_EN_BTN_POLLING_RATE_MS
+        int "Enable button polling rate (ms)"
+        range 0 1000
+        default 100
+        help
+            Polling rate in milliseconds for the enable button.
+            Default is 100ms.
+
+        config ADA_APP_EN_LED_GPIO
+        int "Status LED GPIO number"
+        range 0 48
+        default 16
+        help
+            GPIO number (IOxx) the status LED is connected to.
+
+endmenu

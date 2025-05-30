@@ -1,10 +1,4 @@
-set(requires
-    esp_timer
-    ada_i2s_microphone_driver
-    ada_i2s_speaker_driver
-    ada_led_strip_driver
-    )
-
-idf_component_register(SRCS "src/ada_wake_word_detection_engine.c"
+idf_component_register(SRCS "src/ada_wake_word_detection_engine.cpp"
                        INCLUDE_DIRS "include"
-                       REQUIRES ${requires})
+                       REQUIRES esp_event ada_application ada_microphone_driver micro_wake_word
+                       )

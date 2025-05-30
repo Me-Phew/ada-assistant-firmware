@@ -1,0 +1,8 @@
+menu "Ada Cloud Services"
+    config ADA_CLOUD_SERVER_URL
+        string "Server URL"
+        default "http://192.168.1.13:4000/"
+        help
+            The URL of the server to connect to.
+
+endmenu

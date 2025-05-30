@@ -1,0 +1,57 @@
+menu "Ada Microphone Driver"
+
+    config ADA_MICROPHONE_DRIVER_SCK_GPIO
+        int "SCK GPIO number"
+        range 0 48
+        default 12
+        help
+            GPIO number (IOxx) the SCK microphone pin is connected to.
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used.
+
+    config ADA_MICROPHONE_DRIVER_SD_GPIO
+        int "SD GPIO number"
+        range 0 48
+        default 13
+        help
+            GPIO number (IOxx) the SD microphone pin is connected to.
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used.
+
+    config ADA_MICROPHONE_DRIVER_WS_GPIO
+        int "WS GPIO number"
+        range 0 48
+        default 14
+        help
+            GPIO number (IOxx) the WS microphone pin is connected to.
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used.
+
+    config ADA_MICROPHONE_DRIVER_I2S_PORT
+        int "I2S port number"
+        range 0 1
+        default 1
+        help
+            I2S number to use for the microphone driver.
+            This is used to select the I2S peripheral to use for the microphone driver.
+            The default is 1, which is the second I2S peripheral.
+            The first I2S peripheral is 0.
+
+    config ADA_MICROPHONE_DRIVER_SAMPLE_RATE
+        int "Microphone sample rate"
+        range 8000 48000
+        default 16000
+        help
+            Sample rate to use for the microphone driver.
+            This is used to select the sample rate for the I2S peripheral.
+            The default is 16000, which is the most common sample rate for microphones.
+            Other common sample rates are 8000, 11025, 22050, 32000, 44100, and 48000.
+
+
+    config ADA_MICROPHONE_DRIVER_BITS_PER_SAMPLE
+        int "Microphone bits per sample"
+        range 8 32
+        default 32
+        help
+            Bits per sample to use for the microphone driver.
+            This is used to select the bits per sample for the I2S peripheral.
+            The default is 32, which used for the INMP441 microphone.
+            Other common bits per sample are 8, 16 and 24.
+endmenu
