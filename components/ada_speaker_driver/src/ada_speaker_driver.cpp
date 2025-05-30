@@ -7,7 +7,7 @@ namespace ada_assistant
 {
     namespace speaker_driver
     {
-        static const char *TAG = "AdaSpeaker";
+        static const char *TAG = "ADA_SPEAKER_DRIVER";
 
         AdaSpeakerDriver::AdaSpeakerDriver()
             : app_event_loop_handle_(nullptr), initialized(false), playing(false), volume(100),
@@ -710,13 +710,7 @@ namespace ada_assistant
                 // The audio_pipeline_task listens for events and updates `playing` status.
                 // We just need to poll the `playing` flag here.
                 // A direct listen on iface_handle_ here would conflict with audio_pipeline_task.
-                vTaskDelay(pdMS_TO_TICKS(100)); // Check every 100ms
-            }
-
-            if (!initialized)
-            {
-                ESP_LOGW(TAG, "Player deinitialized during blocking playback.");
-                return ESP_ERR_INVALID_STATE;
+                vTaskDelay(pdMS_TO_TICKS(10));
             }
 
             ESP_LOGI(TAG, "MP3 file playback finished or stopped: %s", file_path.c_str());

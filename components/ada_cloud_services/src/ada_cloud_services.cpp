@@ -679,10 +679,35 @@ namespace ada_assistant
                 ESP_LOGI(TAG, "Response URL: %s", responseUrl.c_str());
 
                 event_command_processing_finished_data_t event_data;
+
+                strncpy(event_data.response_url, responseUrl.c_str(), sizeof(event_data.response_url) - 1);
+                event_data.response_url[sizeof(event_data.response_url) - 1] = '\0'; // Ensure null termination
+
                 event_data.is_playback_start_request = cJSON_IsTrue(is_playback_start_request_json);
-                strncpy(event_data.response_path, responseUrl.c_str(), sizeof(event_data.response_path) - 1);
-                event_data.response_path[sizeof(event_data.response_path) - 1] = '\0'; // Ensure null termination
-                cJSON_Delete(response_json);                                           // Free cJSON structure for response
+
+                if (event_data.is_playback_start_request)
+                {
+                    cJSON *playback_audio_path_json = cJSON_GetObjectItem(response_json, "playbackAudioPath");
+                    if (!cJSON_IsString(playback_audio_path_json) || (playback_audio_path_json->valuestring == NULL))
+                    {
+                        ESP_LOGE(TAG, "Failed to get 'playbackAudioPath' string from response JSON.");
+                        cJSON_Delete(response_json);
+                        return ESP_FAIL; // Or ESP_ERR_INVALID_RESPONSE
+                    }
+
+                    std::string playbackAudioUrl = cloud_server_url_ + playback_audio_path_json->valuestring;
+                    ESP_LOGI(TAG, "Playback audio URL: %s", playbackAudioUrl.c_str());
+
+                    strncpy(event_data.playback_audio_url, playbackAudioUrl.c_str(), sizeof(event_data.playback_audio_url) - 1);
+                    event_data.playback_audio_url[sizeof(event_data.playback_audio_url) - 1] = '\0'; // Ensure null termination
+                }
+                else
+                {
+                    // If not a playback start request, set playback audio URL to empty
+                    event_data.playback_audio_url[0] = '\0'; // Ensure it's empty
+                }
+
+                cJSON_Delete(response_json); // Free cJSON structure for response
 
                 // Post event about audio processing completion
                 esp_err_t post_ret = esp_event_post_to(app_event_loop_handle_,

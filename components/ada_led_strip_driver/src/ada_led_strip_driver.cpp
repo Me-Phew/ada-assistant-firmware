@@ -105,13 +105,25 @@ namespace ada_assistant
             AdaLedStripDriver *self = static_cast<AdaLedStripDriver *>(params);
             ESP_LOGI(TAG, "Effect task started");
 
+            double brightness_factor = self->current_effect_config_.brightness / 100.0;
+
+            uint8_t red_scaled = self->current_effect_config_.r * brightness_factor;
+            uint8_t green_scaled = self->current_effect_config_.g * brightness_factor;
+            uint8_t blue_scaled = self->current_effect_config_.b * brightness_factor;
+
+            ESP_LOGI(TAG, "Effect task color R:%u G:%u B:%u with brightness factor %f", red_scaled, green_scaled, blue_scaled, brightness_factor);
+
             while (self->is_effect_running_)
             {
+                brightness_factor = self->current_effect_config_.brightness / 100.0;
+
                 for (int i = 0; i < self->led_count_; i++)
                 {
-                    led_strip_set_pixel(self->led_strip_handle_, i, self->current_effect_config_.r * self->current_effect_config_.brightness,
-                                        self->current_effect_config_.g * self->current_effect_config_.brightness,
-                                        self->current_effect_config_.b * self->current_effect_config_.brightness);
+                    led_strip_set_pixel(self->led_strip_handle_,
+                                        i,
+                                        red_scaled,
+                                        green_scaled,
+                                        blue_scaled);
                 }
                 led_strip_refresh(self->led_strip_handle_);
                 vTaskDelay(pdMS_TO_TICKS(self->current_effect_config_.duration_ms));
@@ -176,8 +188,6 @@ namespace ada_assistant
                 effect_config.brightness = brightness_;
             }
 
-            effect_config.brightness = effect_config.brightness / 100;
-
             current_effect_config_ = effect_config;
             ESP_LOGI(TAG, "Effect config set: R:%d G:%d B:%d Duration:%d ms Brightness:%d", effect_config.r, effect_config.g, effect_config.b, effect_config.duration_ms, effect_config.brightness);
 
@@ -205,20 +215,26 @@ namespace ada_assistant
 
         esp_err_t AdaLedStripDriver::set_all_leds_to_color(uint8_t red, uint8_t green, uint8_t blue, int brightness)
         {
-            ESP_LOGI(TAG, "Setting LED color to R:%d G:%d B:%d", red, green, blue);
+            ESP_LOGI(TAG, "Setting LED color to R:%d G:%d B:%d (without brightness factor)", red, green, blue);
 
             if (brightness == -1)
             {
                 brightness = brightness_;
             }
 
-            brightness = brightness / 100;
+            double brightness_factor = brightness / 100.0;
 
             esp_err_t res = ESP_FAIL;
 
+            uint8_t red_scaled = red * brightness_factor;
+            uint8_t green_scaled = green * brightness_factor;
+            uint8_t blue_scaled = blue * brightness_factor;
+
+            ESP_LOGI(TAG, "Setting all LEDs to color R:%u G:%u B:%u (with brightness factor) %f", red_scaled, green_scaled, blue_scaled, brightness_factor);
+
             for (int i = 0; i < led_count_; i++)
             {
-                led_strip_set_pixel(led_strip_handle_, i, red * brightness, green * brightness, blue * brightness);
+                led_strip_set_pixel(led_strip_handle_, i, red * brightness_factor, green * brightness_factor, blue * brightness_factor);
             }
 
             res = led_strip_refresh(led_strip_handle_);

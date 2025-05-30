@@ -133,7 +133,7 @@ namespace ada_assistant
             // For structs, you might define them fully in the .cpp file if complex,
             // or use C++11 initializers here if simple.
             static const uint8_t DEFAULT_SPEAKER_VOLUME = 100;
-            static const uint8_t DEFAULT_LED_STRIP_BRIGHTNESS = 128;
+            static const uint8_t DEFAULT_LED_STRIP_BRIGHTNESS = 50;
             static const WakeWordSensitivity DEFAULT_WAKE_WORD_SENSITIVITY = WakeWordSensitivity::MEDIUM;
             // C++11 in-class static const member initialization for the struct
             static const PowerOnLedSettings DEFAULT_POWER_ON_LED_SETTINGS;

@@ -31,7 +31,11 @@ namespace ada_assistant
         typedef struct
         {
             bool is_playback_start_request;
-            char response_path[256];
+            // TODO Consider using dynamic allocation
+            // These strings are big for stack allocation and URLS could be longer than 256 characters.
+            // For now, we use fixed-size buffers to avoid dynamic memory allocation.
+            char response_url[256];
+            char playback_audio_url[256];
         } event_command_processing_finished_data_t;
 
         class AdaCloudServices

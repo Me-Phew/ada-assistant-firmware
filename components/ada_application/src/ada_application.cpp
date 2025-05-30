@@ -272,8 +272,8 @@ namespace ada_assistant
         speaker_driver_.init(app_event_loop_handle_, settings_manager_.getSpeakerVolume());
 
         // ! LED strip brightness control here
-        led_strip_driver_.init(app_event_loop_handle_, settings_manager_.getLedStripBrightness());
-        // led_strip_driver_.init(app_event_loop_handle_, 5);
+        // led_strip_driver_.init(app_event_loop_handle_, settings_manager_.getLedStripBrightness());
+        led_strip_driver_.init(app_event_loop_handle_, 1);
 
         if (settings_manager_.isPaired())
         {
@@ -427,7 +427,6 @@ namespace ada_assistant
 
             break;
         }
-
         case APP_EVENT_WIFI_CONNECTION_FAILED:
         {
             ESP_LOGI(TAG, "Wi-Fi connection failed");
@@ -512,7 +511,7 @@ namespace ada_assistant
         {
             ESP_LOGI(TAG, "Wake word detected");
 
-            speaker_driver_.play_mp3_file("/audio/listening_start.mp3");
+            speaker_driver_.play_mp3_file_blocking("/audio/listening_start.mp3");
 
             led_strip_driver_.start_flashing_effect({.r = 191,
                                                      .g = 245,
@@ -612,16 +611,28 @@ namespace ada_assistant
 
             ESP_LOGI(TAG, "Command processing finished details:");
             ESP_LOGI(TAG, "  Is Command: %s", finished_payload->is_playback_start_request ? "true" : "false");
-            ESP_LOGI(TAG, "  Response Path: %s", finished_payload->response_path);
+            ESP_LOGI(TAG, "  Response URL: %s", finished_payload->response_url);
+            ESP_LOGI(TAG, "  Playback Audio URL: %s", finished_payload->playback_audio_url);
 
             led_strip_driver_.stop_current_effect();
             led_strip_driver_.set_all_leds_to_color(0, 255, 0); // Green
 
-            speaker_driver_.play_http_stream_blocking(finished_payload->response_path);
-
-            ESP_LOGI(TAG, "Playback finished for response path: %s", finished_payload->response_path);
+            speaker_driver_.play_http_stream_blocking(finished_payload->response_url);
 
             wake_word_engine_.start();
+
+            if (finished_payload->is_playback_start_request)
+            {
+                ESP_LOGI(TAG, "Playback start request received. Starting playback.");
+
+                speaker_driver_.play_http_stream(finished_payload->playback_audio_url);
+            }
+            else
+            {
+                ESP_LOGI(TAG, "No playback start request.");
+            }
+
+            ESP_LOGI(TAG, "Finished processing command response.");
 
             break;
         }
